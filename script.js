@@ -4,26 +4,20 @@
  * Data Structures:
  * 
  * users: Array<string>
- *   List of available staff names.
- * 
- * constraints: Array<Object>
- *   {
- *     id: number,
- *     user: string,
- *     date: string (YYYY-MM-DD),
- *     slot: 'AM' | 'PM'
- *   }
- * 
- * schedule: Object
- *   Key: "YYYY-MM-DD_AM" or "YYYY-MM-DD_PM"
- *   Value: string (assigned user name)
+ * constraints: Array<Object> { user, date, slot }
+ * schedule: Object { "YYYY-MM-DD_AM": "User" }
  */
+
+// CONFIGURATION
+// PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL HERE
+const API_URL = "https://script.google.com/macros/s/AKfycbzxe-gNCjWAsi36ksEMF0DkK7Bf0SfcqKq3ME5UA3UaGAn7jxwtGkKY0y8QUvtO2IUq/exec";
 
 // State
 let currentDate = new Date();
-let users = ["Dr. A", "Dr. B", "Dr. C", "Dr. D", "Dr. E"];
+let users = [];
 let constraints = [];
 let schedule = {};
+let isLoading = false;
 
 // DOM Elements
 const calendarGrid = document.getElementById('calendar-grid');
@@ -43,10 +37,11 @@ const addUserBtn = document.getElementById('add-user-btn');
 
 // Initialization
 function init() {
-    renderCalendar();
-    renderConstraints();
-    renderUserList();
-    updateUserSelect();
+    if (API_URL === "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE") {
+        alert("Please configure the API_URL in script.js with your Google Apps Script deployment URL.");
+    }
+
+    fetchData();
 
     // Event Listeners
     prevMonthBtn.addEventListener('click', () => changeMonth(-1));
@@ -54,6 +49,68 @@ function init() {
     addConstraintBtn.addEventListener('click', addConstraint);
     generateBtn.addEventListener('click', generateSchedule);
     addUserBtn.addEventListener('click', addUser);
+}
+
+// API Helpers
+async function fetchData() {
+    setLoading(true);
+    try {
+        const response = await fetch(API_URL);
+        const result = await response.json();
+        if (result.status === 'success') {
+            users = result.data.users;
+            constraints = result.data.constraints;
+            schedule = result.data.schedule;
+
+            renderAll();
+        } else {
+            console.error("API Error:", result.message);
+        }
+    } catch (err) {
+        console.error("Fetch Error:", err);
+        // Fallback for demo if API fails or not set
+        if (users.length === 0) users = ["Dr. A (Demo)", "Dr. B (Demo)"];
+        renderAll();
+    } finally {
+        setLoading(false);
+    }
+}
+
+async function postData(action, payload) {
+    setLoading(true);
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action, ...payload })
+        });
+        const result = await response.json();
+        if (result.status !== 'success') {
+            alert("Error saving data: " + result.message);
+            return false;
+        }
+        return true;
+    } catch (err) {
+        console.error("Post Error:", err);
+        alert("Network error. Check console.");
+        return false;
+    } finally {
+        setLoading(false);
+    }
+}
+
+function setLoading(loading) {
+    isLoading = loading;
+    document.body.style.cursor = loading ? 'wait' : 'default';
+    generateBtn.disabled = loading;
+    addConstraintBtn.disabled = loading;
+    addUserBtn.disabled = loading;
+}
+
+function renderAll() {
+    renderCalendar();
+    renderConstraints();
+    renderUserList();
+    updateUserSelect();
 }
 
 // Calendar Logic
@@ -136,7 +193,7 @@ function renderCalendar() {
 }
 
 // Constraint Management
-function addConstraint() {
+async function addConstraint() {
     const user = userSelect.value;
     const date = datePicker.value;
     const isAm = amCheck.checked;
@@ -147,24 +204,22 @@ function addConstraint() {
         return;
     }
 
-    // Check if Wednesday? (Optional, but good for UX)
-    const d = new Date(date);
-    // Note: datePicker value is YYYY-MM-DD. new Date(date) might be UTC or local depending on browser.
-    // Safest to parse manually or use simple check.
-    // Let's allow blocking any day for now, but scheduling only cares about Wednesdays.
+    // Optimistic Update
+    const newConstraints = [];
+    if (isAm) newConstraints.push({ user, date, slot: 'AM' });
+    if (isPm) newConstraints.push({ user, date, slot: 'PM' });
 
-    if (isAm) {
-        constraints.push({ id: Date.now() + Math.random(), user, date, slot: 'AM' });
-    }
-    if (isPm) {
-        constraints.push({ id: Date.now() + Math.random(), user, date, slot: 'PM' });
+    constraints.push(...newConstraints);
+    renderConstraints();
+
+    // Sync with Backend
+    for (const c of newConstraints) {
+        await postData('addConstraint', c);
     }
 
     // Reset inputs
     amCheck.checked = false;
     pmCheck.checked = false;
-
-    renderConstraints();
 }
 
 function renderConstraints() {
@@ -179,10 +234,15 @@ function renderConstraints() {
     });
 }
 
-// Expose to global scope for onclick handler
-window.removeConstraint = function (index) {
+window.removeConstraint = async function (index) {
+    const c = constraints[index];
+
+    // Optimistic Update
     constraints.splice(index, 1);
     renderConstraints();
+
+    // Sync
+    await postData('removeConstraint', { user: c.user, date: c.date, slot: c.slot });
 }
 
 // User Management
@@ -212,7 +272,7 @@ function updateUserSelect() {
     });
 }
 
-function addUser() {
+async function addUser() {
     const name = newUserNameInput.value.trim();
     if (!name) return;
 
@@ -221,31 +281,33 @@ function addUser() {
         return;
     }
 
+    // Optimistic
     users.push(name);
     newUserNameInput.value = '';
     renderUserList();
     updateUserSelect();
+
+    // Sync
+    await postData('addUser', { name });
 }
 
-window.deleteUser = function (index) {
+window.deleteUser = async function (index) {
     const userToDelete = users[index];
     if (confirm(`Are you sure you want to delete ${userToDelete}?`)) {
+        // Optimistic
         users.splice(index, 1);
-
-        // Cleanup constraints and schedule?
-        // For now, let's just leave them or filter them out during generation.
-        // But better to clean up constraints at least.
         constraints = constraints.filter(c => c.user !== userToDelete);
 
         renderUserList();
         updateUserSelect();
         renderConstraints();
-        // Re-render calendar to show unassigned if they were scheduled? 
-        // Or just leave it until regeneration. Let's leave it.
+
+        // Sync
+        await postData('deleteUser', { name: userToDelete });
     }
 }
 
-window.editUser = function (index) {
+window.editUser = async function (index) {
     const oldName = users[index];
     const newName = prompt("Enter new name:", oldName);
 
@@ -255,14 +317,11 @@ window.editUser = function (index) {
             return;
         }
 
+        // Optimistic
         users[index] = newName;
-
-        // Update constraints
         constraints.forEach(c => {
             if (c.user === oldName) c.user = newName;
         });
-
-        // Update schedule
         Object.keys(schedule).forEach(key => {
             if (schedule[key] === oldName) schedule[key] = newName;
         });
@@ -271,23 +330,18 @@ window.editUser = function (index) {
         updateUserSelect();
         renderConstraints();
         renderCalendar();
+
+        // Sync
+        await postData('editUser', { oldName, newName });
     }
 }
 
 // Scheduling Algorithm
-function generateSchedule() {
-    // Clear current month's schedule
-    // We only want to clear schedule for the currently displayed month? 
-    // Or regenerate everything? The prompt says "Generate Schedule... within the current month".
-    // Let's clear only keys that match the current month to be safe, or just overwrite them.
-
+async function generateSchedule() {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const lastDay = new Date(year, month + 1, 0).getDate();
 
-    // Track shift counts for fairness (reset for this generation or keep global? 
-    // Prompt implies "distribute shifts... among users". Usually this is per month or cumulative.
-    // Let's do per-month fairness for simplicity as we generate per month.)
     const shiftCounts = {};
     users.forEach(u => shiftCounts[u] = 0);
 
@@ -296,16 +350,15 @@ function generateSchedule() {
         const dateObj = new Date(year, month, d);
         if (dateObj.getDay() === 3) { // Wednesday
             const dateStr = formatDate(dateObj);
-
-            // Schedule AM
             assignSlot(dateStr, 'AM', shiftCounts);
-
-            // Schedule PM
             assignSlot(dateStr, 'PM', shiftCounts);
         }
     }
 
     renderCalendar();
+
+    // Sync Schedule
+    await postData('saveSchedule', { schedule });
 }
 
 function assignSlot(dateStr, slot, shiftCounts) {
@@ -313,7 +366,6 @@ function assignSlot(dateStr, slot, shiftCounts) {
 
     // Find available users
     const availableUsers = users.filter(user => {
-        // Check if user has a constraint for this date & slot
         const hasConstraint = constraints.some(c =>
             c.user === user && c.date === dateStr && c.slot === slot
         );
@@ -323,19 +375,14 @@ function assignSlot(dateStr, slot, shiftCounts) {
     if (availableUsers.length === 0) {
         schedule[key] = "Unassigned";
     } else {
-        // Sort by shift count (asc) to ensure fairness
-        // If tie, pick random or first
         availableUsers.sort((a, b) => shiftCounts[a] - shiftCounts[b]);
-
         const selectedUser = availableUsers[0];
         schedule[key] = selectedUser;
         shiftCounts[selectedUser]++;
     }
 }
 
-// Helper
 function formatDate(date) {
-    // Returns YYYY-MM-DD
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
