@@ -117,6 +117,7 @@ function renderAll() {
 function changeMonth(delta) {
     currentDate.setMonth(currentDate.getMonth() + delta);
     renderCalendar();
+    renderConstraints(); // Update list when month changes
 }
 
 function renderCalendar() {
@@ -224,11 +225,32 @@ async function addConstraint() {
 
 function renderConstraints() {
     constraintsUl.innerHTML = '';
-    constraints.forEach((c, index) => {
+
+    // Filter by current month and year
+    const currentMonth = currentDate.getMonth();
+    const currentYear = currentDate.getFullYear();
+
+    const filteredConstraints = constraints.filter(c => {
+        // c.date is YYYY-MM-DD string
+        const [y, m, d] = c.date.split('-').map(Number);
+        // Note: m in date string is 1-12, getMonth() is 0-11
+        return y === currentYear && (m - 1) === currentMonth;
+    });
+
+    if (filteredConstraints.length === 0) {
+        constraintsUl.innerHTML = '<li style="color: #888; font-style: italic;">No unavailable times for this month.</li>';
+        return;
+    }
+
+    filteredConstraints.forEach((c) => {
+        // We need the original index to delete correctly from the main array
+        // So let's find the index in the main 'constraints' array
+        const originalIndex = constraints.indexOf(c);
+
         const li = document.createElement('li');
         li.innerHTML = `
             <span>${c.user} – ${c.date} (${c.slot})</span>
-            <span class="delete-constraint" onclick="removeConstraint(${index})">×</span>
+            <span class="delete-constraint" onclick="removeConstraint(${originalIndex})">×</span>
         `;
         constraintsUl.appendChild(li);
     });
