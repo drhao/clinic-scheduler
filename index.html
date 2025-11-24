@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinic Scheduler</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header>
+        <h1>Wednesday Clinic Scheduler</h1>
+        <button id="generate-btn" class="primary-btn">Generate Schedule</button>
+    </header>
+
+    <main class="container">
+        <!-- Left Side: Calendar -->
+        <section class="calendar-section">
+            <div class="calendar-header">
+                <button id="prev-month">Previous</button>
+                <h2 id="current-month-label">Month Year</h2>
+                <button id="next-month">Next</button>
+            </div>
+            <div class="calendar-grid" id="calendar-grid">
+                <!-- Calendar cells will be generated here -->
+            </div>
+        </section>
+
+        <!-- Right Side: Controls -->
+        <section class="controls-section">
+            <div class="input-group">
+                <h3>Manage Unavailability</h3>
+
+                <label for="user-select">User</label>
+                <div class="user-input-row">
+                    <select id="user-select">
+                        <option value="Dr. A">Dr. A</option>
+                        <option value="Dr. B">Dr. B</option>
+                        <option value="Dr. C">Dr. C</option>
+                        <option value="Dr. D">Dr. D</option>
+                        <option value="Dr. E">Dr. E</option>
+                    </select>
+                    <!-- Allow adding new users dynamically if needed, for now fixed list as per req or simple text input -->
+                </div>
+
+                <label for="date-picker">Date</label>
+                <input type="date" id="date-picker">
+
+                <div class="checkbox-group">
+                    <label><input type="checkbox" id="am-check"> Wednesday AM</label>
+                    <label><input type="checkbox" id="pm-check"> Wednesday PM</label>
+                </div>
+
+                <button id="add-constraint-btn" class="secondary-btn">Add Unavailable Time</button>
+            </div>
+
+            <div class="constraints-list">
+                <h3>Unavailable Times</h3>
+                <ul id="constraints-ul">
+                    <!-- List items will be added here -->
+                </ul>
+            </div>
+
+            <div class="staff-management">
+                <h3>Manage Staff</h3>
+                <div class="add-user-row">
+                    <input type="text" id="new-user-name" placeholder="New staff name">
+                    <button id="add-user-btn" class="secondary-btn">Add</button>
+                </div>
+                <ul id="user-list-ul">
+                    <!-- User list items will be added here -->
+                </ul>
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

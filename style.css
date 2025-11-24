@@ -1,0 +1,268 @@
+:root {
+    --primary-color: #007bff;
+    --secondary-color: #6c757d;
+    --bg-color: #f8f9fa;
+    --border-color: #dee2e6;
+    --highlight-color: #e8f0fe;
+    --text-color: #333;
+    --danger-color: #dc3545;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+header {
+    background-color: #fff;
+    padding: 1rem 2rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+h1 {
+    font-size: 1.5rem;
+}
+
+.primary-btn {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.primary-btn:hover {
+    background-color: #0056b3;
+}
+
+.secondary-btn {
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 0.5rem;
+}
+
+.secondary-btn:hover {
+    background-color: #545b62;
+}
+
+.container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    /* Prevent full page scroll, scroll sections individually if needed */
+}
+
+/* Left Side: Calendar */
+.calendar-section {
+    flex: 2;
+    padding: 2rem;
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    background-color: var(--border-color);
+    /* Grid lines */
+    border: 1px solid var(--border-color);
+}
+
+.calendar-cell {
+    background-color: #fff;
+    min-height: 120px;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.calendar-cell.header {
+    background-color: #f1f3f5;
+    min-height: auto;
+    font-weight: bold;
+    text-align: center;
+    padding: 0.5rem;
+}
+
+.calendar-cell.wednesday {
+    background-color: #fff8e1;
+    /* Light yellow highlight for Wednesdays */
+}
+
+.day-number {
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+
+.schedule-slot {
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+    padding: 0.25rem;
+    background-color: #f1f3f5;
+    border-radius: 3px;
+}
+
+.schedule-slot strong {
+    display: block;
+    font-size: 0.75rem;
+    color: #555;
+}
+
+/* Right Side: Controls */
+.controls-section {
+    flex: 1;
+    padding: 2rem;
+    background-color: #fff;
+    overflow-y: auto;
+}
+
+.input-group {
+    margin-bottom: 2rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.input-group select,
+.input-group input[type="date"] {
+    width: 100%;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.checkbox-group {
+    margin-bottom: 1rem;
+}
+
+.checkbox-group label {
+    display: inline-block;
+    margin-right: 1rem;
+    font-weight: normal;
+}
+
+.constraints-list ul {
+    list-style: none;
+}
+
+.constraints-list li {
+    background-color: #f8f9fa;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.delete-constraint {
+    color: var(--danger-color);
+    cursor: pointer;
+    font-weight: bold;
+    margin-left: 0.5rem;
+}
+
+/* Staff Management */
+.staff-management {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.add-user-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.add-user-row input {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.add-user-row button {
+    margin-top: 0;
+    /* Override secondary-btn margin */
+}
+
+.user-list-item {
+    background-color: #f8f9fa;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.user-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.edit-user-btn,
+.delete-user-btn {
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--primary-color);
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+.delete-user-btn {
+    color: var(--danger-color);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .calendar-section {
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+}
