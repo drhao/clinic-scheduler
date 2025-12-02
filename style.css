@@ -224,6 +224,42 @@ button {
     opacity: 0.7;
 }
 
+/* Duty Counts Table */
+.duty-counts-section {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.duty-counts-section h3 {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    color: var(--text-color);
+}
+
+#duty-counts-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+#duty-counts-table th,
+#duty-counts-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#duty-counts-table th {
+    font-weight: 600;
+    color: var(--text-light);
+    background-color: #f8fafc;
+}
+
+#duty-counts-table tr:last-child td {
+    border-bottom: none;
+}
+
 /* Right Side: Controls */
 .controls-section {
     flex: 1;

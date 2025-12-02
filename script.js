@@ -14,7 +14,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbzxe-gNCjWAsi36ksEMF0Dk
 
 // State
 let currentDate = new Date();
-let users = [];
+let users = []; // Array of { name: string, limit: number }
 let constraints = [];
 let schedule = {};
 let isLoading = false;
@@ -33,7 +33,9 @@ const addConstraintBtn = document.getElementById('add-constraint-btn');
 const constraintsUl = document.getElementById('constraints-ul');
 const userListUl = document.getElementById('user-list-ul');
 const newUserNameInput = document.getElementById('new-user-name');
+const newUserLimitInput = document.getElementById('new-user-limit');
 const addUserBtn = document.getElementById('add-user-btn');
+const dutyCountsTableBody = document.querySelector('#duty-counts-table tbody');
 
 // Initialization
 function init() {
@@ -68,8 +70,8 @@ async function fetchData() {
         }
     } catch (err) {
         console.error("Fetch Error:", err);
-        // Fallback for demo if API fails or not set
-        if (users.length === 0) users = ["Dr. A (Demo)", "Dr. B (Demo)"];
+        // Fallback for demo
+        if (users.length === 0) users = [{ name: "Dr. A", limit: 4 }, { name: "Dr. B", limit: 4 }];
         renderAll();
     } finally {
         setLoading(false);
@@ -111,6 +113,7 @@ function renderAll() {
     renderConstraints();
     renderUserList();
     updateUserSelect();
+    renderDutyCounts();
 }
 
 // Calendar Logic
@@ -118,6 +121,7 @@ function changeMonth(delta) {
     currentDate.setMonth(currentDate.getMonth() + delta);
     renderCalendar();
     renderConstraints(); // Update list when month changes
+    renderDutyCounts(); // Update counts when month changes
 }
 
 function renderCalendar() {
@@ -274,7 +278,7 @@ function renderUserList() {
         const li = document.createElement('li');
         li.className = 'user-list-item';
         li.innerHTML = `
-            <span id="user-name-${index}">${user}</span>
+            <span id="user-name-${index}">${user.name} (Max: ${user.limit})</span>
             <div class="user-actions">
                 <button class="edit-user-btn" onclick="editUser(${index})">Edit</button>
                 <button class="delete-user-btn" onclick="deleteUser(${index})">Delete</button>
@@ -288,33 +292,40 @@ function updateUserSelect() {
     userSelect.innerHTML = '';
     users.forEach(user => {
         const option = document.createElement('option');
-        option.value = user;
-        option.textContent = user;
+        option.value = user.name;
+        option.textContent = user.name;
         userSelect.appendChild(option);
     });
 }
 
 async function addUser() {
     const name = newUserNameInput.value.trim();
-    if (!name) return;
+    const limit = parseInt(newUserLimitInput.value, 10);
 
-    if (users.includes(name)) {
+    if (!name || isNaN(limit) || limit < 1) {
+        alert("Please enter a valid name and limit.");
+        return;
+    }
+
+    if (users.some(u => u.name === name)) {
         alert("User already exists!");
         return;
     }
 
     // Optimistic
-    users.push(name);
+    users.push({ name, limit });
     newUserNameInput.value = '';
+    newUserLimitInput.value = '4';
     renderUserList();
     updateUserSelect();
+    renderDutyCounts();
 
     // Sync
-    await postData('addUser', { name });
+    await postData('addUser', { name, limit });
 }
 
 window.deleteUser = async function (index) {
-    const userToDelete = users[index];
+    const userToDelete = users[index].name;
     if (confirm(`Are you sure you want to delete ${userToDelete}?`)) {
         // Optimistic
         users.splice(index, 1);
@@ -323,6 +334,7 @@ window.deleteUser = async function (index) {
         renderUserList();
         updateUserSelect();
         renderConstraints();
+        renderDutyCounts();
 
         // Sync
         await postData('deleteUser', { name: userToDelete });
@@ -330,31 +342,44 @@ window.deleteUser = async function (index) {
 }
 
 window.editUser = async function (index) {
-    const oldName = users[index];
-    const newName = prompt("Enter new name:", oldName);
+    const oldUser = users[index];
+    const newName = prompt("Enter new name:", oldUser.name);
+    if (newName === null) return; // Cancelled
 
-    if (newName && newName.trim() !== "" && newName !== oldName) {
-        if (users.includes(newName)) {
+    const newLimitStr = prompt("Enter new max duties:", oldUser.limit);
+    if (newLimitStr === null) return; // Cancelled
+
+    const newLimit = parseInt(newLimitStr, 10);
+
+    if (newName && newName.trim() !== "" && !isNaN(newLimit) && newLimit > 0) {
+        if (newName !== oldUser.name && users.some(u => u.name === newName)) {
             alert("Name already exists!");
             return;
         }
 
         // Optimistic
-        users[index] = newName;
-        constraints.forEach(c => {
-            if (c.user === oldName) c.user = newName;
-        });
-        Object.keys(schedule).forEach(key => {
-            if (schedule[key] === oldName) schedule[key] = newName;
-        });
+        const oldName = oldUser.name;
+        users[index] = { name: newName, limit: newLimit };
+
+        if (oldName !== newName) {
+            constraints.forEach(c => {
+                if (c.user === oldName) c.user = newName;
+            });
+            Object.keys(schedule).forEach(key => {
+                if (schedule[key] === oldName) schedule[key] = newName;
+            });
+        }
 
         renderUserList();
         updateUserSelect();
         renderConstraints();
         renderCalendar();
+        renderDutyCounts();
 
         // Sync
-        await postData('editUser', { oldName, newName });
+        await postData('editUser', { oldName, newName, newLimit });
+    } else {
+        alert("Invalid input.");
     }
 }
 
@@ -365,7 +390,7 @@ async function generateSchedule() {
     const lastDay = new Date(year, month + 1, 0).getDate();
 
     const shiftCounts = {};
-    users.forEach(u => shiftCounts[u] = 0);
+    users.forEach(u => shiftCounts[u.name] = 0);
 
     // Find all Wednesdays
     for (let d = 1; d <= lastDay; d++) {
@@ -378,9 +403,50 @@ async function generateSchedule() {
     }
 
     renderCalendar();
+    renderDutyCounts(); // Update counts after generation
 
     // Sync Schedule
     await postData('saveSchedule', { schedule });
+}
+
+function renderDutyCounts() {
+    if (!dutyCountsTableBody) return;
+    dutyCountsTableBody.innerHTML = '';
+
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+
+    // Initialize counts
+    const counts = {};
+    users.forEach(u => counts[u.name] = 0);
+
+    // Count duties for current month
+    Object.keys(schedule).forEach(key => {
+        // key format: YYYY-MM-DD_AM or YYYY-MM-DD_PM
+        const [dateStr, slot] = key.split('_');
+        const [y, m, d] = dateStr.split('-').map(Number);
+
+        if (y === year && (m - 1) === month) {
+            const assignedUser = schedule[key];
+            if (assignedUser && assignedUser !== "Unassigned" && counts.hasOwnProperty(assignedUser)) {
+                counts[assignedUser]++;
+            }
+        }
+    });
+
+    // Render rows
+    users.forEach(u => {
+        const row = document.createElement('tr');
+        const count = counts[u.name];
+        const isAtLimit = count >= u.limit;
+
+        row.innerHTML = `
+            <td>${u.name}</td>
+            <td style="${isAtLimit ? 'color: var(--danger-color); font-weight: bold;' : ''}">${count}</td>
+            <td>${u.limit}</td>
+        `;
+        dutyCountsTableBody.appendChild(row);
+    });
 }
 
 function assignSlot(dateStr, slot, shiftCounts) {
@@ -388,19 +454,26 @@ function assignSlot(dateStr, slot, shiftCounts) {
 
     // Find available users
     const availableUsers = users.filter(user => {
+        // Check constraints
         const hasConstraint = constraints.some(c =>
-            c.user === user && c.date === dateStr && c.slot === slot
+            c.user === user.name && c.date === dateStr && c.slot === slot
         );
-        return !hasConstraint;
+        if (hasConstraint) return false;
+
+        // Check duty limit
+        if (shiftCounts[user.name] >= user.limit) return false;
+
+        return true;
     });
 
     if (availableUsers.length === 0) {
         schedule[key] = "Unassigned";
     } else {
-        availableUsers.sort((a, b) => shiftCounts[a] - shiftCounts[b]);
+        // Sort by shift count (asc) to ensure fairness
+        availableUsers.sort((a, b) => shiftCounts[a.name] - shiftCounts[b.name]);
         const selectedUser = availableUsers[0];
-        schedule[key] = selectedUser;
-        shiftCounts[selectedUser]++;
+        schedule[key] = selectedUser.name;
+        shiftCounts[selectedUser.name]++;
     }
 }
 
