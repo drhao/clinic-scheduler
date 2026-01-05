@@ -6,15 +6,16 @@
  * 2. Rename the first tab to 'Users'.
  * 3. Create a second tab named 'Constraints'.
  * 4. Create a third tab named 'Schedule'.
- * 5. Go to Extensions > Apps Script.
- * 6. Paste this code into Code.gs.
- * 7. Click Deploy > New Deployment.
- * 8. Select type: Web app.
- * 9. Description: "Clinic API v2".
- * 10. Execute as: Me.
- * 11. Who has access: Anyone.
- * 12. Click Deploy.
- * 13. Copy the "Web app URL" and paste it into script.js as API_URL.
+ * 5. Create a fourth tab named 'Holidays'.
+ * 6. Go to Extensions > Apps Script.
+ * 7. Paste this code into Code.gs.
+ * 8. Click Deploy > New Deployment.
+ * 9. Select type: Web app.
+ * 10. Description: "Clinic API v3 (Holidays)".
+ * 11. Execute as: Me.
+ * 12. Who has access: Anyone.
+ * 13. Click Deploy.
+ * 14. Copy the "Web app URL" and paste it into script.js as API_URL.
  */
 
 function doGet(e) {
@@ -25,13 +26,12 @@ function doGet(e) {
     const usersData = usersSheet.getDataRange().getValues();
     let users = [];
     if (usersData.length > 0) {
-        // Header: Name, Limit
         let startRow = (usersData[0][0] === "Name") ? 1 : 0;
         for (let i = startRow; i < usersData.length; i++) {
             if (usersData[i][0]) {
                 users.push({
                     name: usersData[i][0],
-                    limit: usersData[i][1] || 4 // Default limit 4 if missing
+                    limit: usersData[i][1] || 4
                 });
             }
         }
@@ -67,9 +67,22 @@ function doGet(e) {
         }
     }
 
+    // Read Holidays
+    const holidaysSheet = ss.getSheetByName('Holidays');
+    const holidaysData = holidaysSheet.getDataRange().getValues();
+    let holidays = [];
+    if (holidaysData.length > 0) {
+        let startRow = (holidaysData[0][0] === "Date") ? 1 : 0;
+        for (let i = startRow; i < holidaysData.length; i++) {
+            if (holidaysData[i][0]) {
+                holidays.push(formatDate(holidaysData[i][0]));
+            }
+        }
+    }
+
     const result = {
         status: 'success',
-        data: { users, constraints, schedule }
+        data: { users, constraints, schedule, holidays }
     };
 
     return ContentService.createTextOutput(JSON.stringify(result))
@@ -142,6 +155,20 @@ function doPost(e) {
             if (rows.length > 0) {
                 sheet.getRange(2, 1, rows.length, 2).setValues(rows);
             }
+
+        } else if (action === 'addHoliday') {
+            const sheet = ss.getSheetByName('Holidays');
+            sheet.appendRow([data.date]);
+
+        } else if (action === 'removeHoliday') {
+            const sheet = ss.getSheetByName('Holidays');
+            const values = sheet.getDataRange().getValues();
+            for (let i = values.length - 1; i >= 0; i--) {
+                if (formatDate(values[i][0]) === data.date) {
+                    sheet.deleteRow(i + 1);
+                    break;
+                }
+            }
         }
 
         return ContentService.createTextOutput(JSON.stringify({ status: 'success' }))
@@ -177,4 +204,5 @@ function setup() {
     if (!ss.getSheetByName('Users')) ss.insertSheet('Users').appendRow(['Name', 'Limit']);
     if (!ss.getSheetByName('Constraints')) ss.insertSheet('Constraints').appendRow(['User', 'Date', 'Slot']);
     if (!ss.getSheetByName('Schedule')) ss.insertSheet('Schedule').appendRow(['Key', 'Assigned User']);
+    if (!ss.getSheetByName('Holidays')) ss.insertSheet('Holidays').appendRow(['Date']);
 }

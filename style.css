@@ -224,6 +224,40 @@ button {
     opacity: 0.7;
 }
 
+/* Holiday Styles */
+.calendar-cell.holiday {
+    background-color: #f0f0f0;
+    /* Grayed out */
+    color: #999;
+}
+
+.holiday-check-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-color);
+    background-color: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+}
+
+.holiday-check-container input {
+    cursor: pointer;
+}
+
+.holiday-msg {
+    font-size: 0.85rem;
+    color: #a0aec0;
+    text-align: center;
+    padding: 1rem 0;
+    font-style: italic;
+    background-color: rgba(255, 255, 255, 0.5);
+    border-radius: 4px;
+}
+
 /* Duty Counts Table */
 .duty-counts-section {
     margin-top: 2rem;
@@ -237,26 +271,31 @@ button {
     color: var(--text-color);
 }
 
-#duty-counts-table {
+#duty-counts-table,
+#yearly-duty-counts-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.9rem;
 }
 
 #duty-counts-table th,
-#duty-counts-table td {
+#duty-counts-table td,
+#yearly-duty-counts-table th,
+#yearly-duty-counts-table td {
     padding: 0.75rem;
     text-align: left;
     border-bottom: 1px solid var(--border-color);
 }
 
-#duty-counts-table th {
+#duty-counts-table th,
+#yearly-duty-counts-table th {
     font-weight: 600;
     color: var(--text-light);
     background-color: #f8fafc;
 }
 
-#duty-counts-table tr:last-child td {
+#duty-counts-table tr:last-child td,
+#yearly-duty-counts-table tr:last-child td {
     border-bottom: none;
 }
 

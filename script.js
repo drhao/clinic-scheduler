@@ -10,13 +10,14 @@
 
 // CONFIGURATION
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL HERE
-const API_URL = "https://script.google.com/macros/s/AKfycbzxe-gNCjWAsi36ksEMF0DkK7Bf0SfcqKq3ME5UA3UaGAn7jxwtGkKY0y8QUvtO2IUq/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwPm4NPYv9xYyN4YGPzkXiGI-1ChO5zMy4KUNLX4Vnm-Y5w-j2jo4kjufAKgXnuJ7d6/exec";
 
 // State
 let currentDate = new Date();
 let users = []; // Array of { name: string, limit: number }
 let constraints = [];
 let schedule = {};
+let holidays = []; // Array of date strings "YYYY-MM-DD"
 let isLoading = false;
 
 // DOM Elements
@@ -36,6 +37,7 @@ const newUserNameInput = document.getElementById('new-user-name');
 const newUserLimitInput = document.getElementById('new-user-limit');
 const addUserBtn = document.getElementById('add-user-btn');
 const dutyCountsTableBody = document.querySelector('#duty-counts-table tbody');
+const yearlyDutyCountsTableBody = document.querySelector('#yearly-duty-counts-table tbody');
 
 // Initialization
 function init() {
@@ -63,6 +65,7 @@ async function fetchData() {
             users = result.data.users;
             constraints = result.data.constraints;
             schedule = result.data.schedule;
+            holidays = result.data.holidays || [];
 
             renderAll();
         } else {
@@ -114,6 +117,7 @@ function renderAll() {
     renderUserList();
     updateUserSelect();
     renderDutyCounts();
+    renderYearlyDutyCounts();
 }
 
 // Calendar Logic
@@ -122,6 +126,7 @@ function changeMonth(delta) {
     renderCalendar();
     renderConstraints(); // Update list when month changes
     renderDutyCounts(); // Update counts when month changes
+    renderYearlyDutyCounts(); // Update yearly counts (year might change)
 }
 
 function renderCalendar() {
@@ -177,24 +182,73 @@ function renderCalendar() {
         if (dayOfWeek === 3) {
             cell.classList.add('wednesday');
 
-            // Render Slots
-            const amKey = `${dateStr}_AM`;
-            const pmKey = `${dateStr}_PM`;
+            const isHoliday = holidays.includes(dateStr);
+            if (isHoliday) cell.classList.add('holiday');
 
-            const amSlot = document.createElement('div');
-            amSlot.className = 'schedule-slot';
-            amSlot.innerHTML = `<strong>AM</strong> ${schedule[amKey] || '-'}`;
+            // Holiday Checkbox
+            const holidayCheckContainer = document.createElement('div');
+            holidayCheckContainer.className = 'holiday-check-container';
+            const holidayCheck = document.createElement('input');
+            holidayCheck.type = 'checkbox';
+            holidayCheck.checked = isHoliday;
+            holidayCheck.title = "Mark as Holiday";
+            holidayCheck.onchange = (e) => toggleHoliday(dateStr, e.target.checked);
 
-            const pmSlot = document.createElement('div');
-            pmSlot.className = 'schedule-slot';
-            pmSlot.innerHTML = `<strong>PM</strong> ${schedule[pmKey] || '-'}`;
+            const holidayLabel = document.createElement('span');
+            holidayLabel.textContent = "Holiday";
 
-            cell.appendChild(amSlot);
-            cell.appendChild(pmSlot);
+            holidayCheckContainer.appendChild(holidayCheck);
+            holidayCheckContainer.appendChild(holidayLabel);
+            cell.appendChild(holidayCheckContainer);
+
+            if (isHoliday) {
+                const holidayMsg = document.createElement('div');
+                holidayMsg.className = 'holiday-msg';
+                holidayMsg.textContent = "No Duty";
+                cell.appendChild(holidayMsg);
+            } else {
+                // Render Slots
+                const amKey = `${dateStr}_AM`;
+                const pmKey = `${dateStr}_PM`;
+
+                const amSlot = document.createElement('div');
+                amSlot.className = 'schedule-slot';
+                amSlot.innerHTML = `<strong>AM</strong> ${schedule[amKey] || '-'}`;
+
+                const pmSlot = document.createElement('div');
+                pmSlot.className = 'schedule-slot';
+                pmSlot.innerHTML = `<strong>PM</strong> ${schedule[pmKey] || '-'}`;
+
+                cell.appendChild(amSlot);
+                cell.appendChild(pmSlot);
+            }
         }
 
         calendarGrid.appendChild(cell);
     }
+}
+
+async function toggleHoliday(dateStr, isChecked) {
+    if (isChecked) {
+        if (!holidays.includes(dateStr)) {
+            holidays.push(dateStr);
+            await postData('addHoliday', { date: dateStr });
+
+            // Clear schedule for this date if it exists
+            delete schedule[`${dateStr}_AM`];
+            delete schedule[`${dateStr}_PM`];
+            await postData('saveSchedule', { schedule });
+        }
+    } else {
+        const idx = holidays.indexOf(dateStr);
+        if (idx !== -1) {
+            holidays.splice(idx, 1);
+            await postData('removeHoliday', { date: dateStr });
+        }
+    }
+    renderCalendar();
+    renderDutyCounts(); // Schedule might change (cleared slots)
+    renderYearlyDutyCounts();
 }
 
 // Constraint Management
@@ -319,6 +373,7 @@ async function addUser() {
     renderUserList();
     updateUserSelect();
     renderDutyCounts();
+    renderYearlyDutyCounts();
 
     // Sync
     await postData('addUser', { name, limit });
@@ -335,6 +390,7 @@ window.deleteUser = async function (index) {
         updateUserSelect();
         renderConstraints();
         renderDutyCounts();
+        renderYearlyDutyCounts();
 
         // Sync
         await postData('deleteUser', { name: userToDelete });
@@ -375,6 +431,7 @@ window.editUser = async function (index) {
         renderConstraints();
         renderCalendar();
         renderDutyCounts();
+        renderYearlyDutyCounts();
 
         // Sync
         await postData('editUser', { oldName, newName, newLimit });
@@ -389,21 +446,56 @@ async function generateSchedule() {
     const month = currentDate.getMonth();
     const lastDay = new Date(year, month + 1, 0).getDate();
 
+    // 1. Calculate yearly counts for initial queue sorting (Fairness Seed)
+    const yearlyCounts = {};
+    users.forEach(u => yearlyCounts[u.name] = 0);
+
+    // Count duties for current year, EXCLUDING the current target month
+    // (We want to base fairness on past performance, unaffected by current run)
+    Object.keys(schedule).forEach(key => {
+        const [dateStr, _] = key.split('_');
+        const [y, m, d] = dateStr.split('-').map(Number);
+
+        if (y === year && (m - 1) !== month) {
+            const assignedUser = schedule[key];
+            if (assignedUser && assignedUser !== "Unassigned" && yearlyCounts.hasOwnProperty(assignedUser)) {
+                yearlyCounts[assignedUser]++;
+            }
+        }
+    });
+
+    // 2. Initialize Queue
+    // Sort logic: Primary = Yearly Count (ASC), Secondary = Name (ASC)
+    let queue = [...users].sort((a, b) => {
+        const countA = yearlyCounts[a.name] || 0;
+        const countB = yearlyCounts[b.name] || 0;
+        if (countA !== countB) return countA - countB;
+        return a.name.localeCompare(b.name);
+    });
+
     const shiftCounts = {};
     users.forEach(u => shiftCounts[u.name] = 0);
 
-    // Find all Wednesdays
+    // 3. Iterate Slots
     for (let d = 1; d <= lastDay; d++) {
         const dateObj = new Date(year, month, d);
         if (dateObj.getDay() === 3) { // Wednesday
             const dateStr = formatDate(dateObj);
-            assignSlot(dateStr, 'AM', shiftCounts);
-            assignSlot(dateStr, 'PM', shiftCounts);
+
+            if (holidays.includes(dateStr)) {
+                delete schedule[`${dateStr}_AM`];
+                delete schedule[`${dateStr}_PM`];
+                continue;
+            }
+
+            assignNextAvailable(dateStr, 'AM', queue, shiftCounts);
+            assignNextAvailable(dateStr, 'PM', queue, shiftCounts);
         }
     }
 
     renderCalendar();
-    renderDutyCounts(); // Update counts after generation
+    renderDutyCounts();
+    renderYearlyDutyCounts();
 
     // Sync Schedule
     await postData('saveSchedule', { schedule });
@@ -446,6 +538,44 @@ function renderDutyCounts() {
             <td>${u.limit}</td>
         `;
         dutyCountsTableBody.appendChild(row);
+    });
+}
+
+function renderYearlyDutyCounts() {
+    if (!yearlyDutyCountsTableBody) return;
+    yearlyDutyCountsTableBody.innerHTML = '';
+
+    const year = new Date().getFullYear();
+
+    // Update Header to reflect which year is being shown
+    const yearlyHeader = document.querySelector('#yearly-duty-counts-table th:nth-child(2)');
+    if (yearlyHeader) yearlyHeader.textContent = `Total Duties in ${year}`;
+
+    // Initialize counts
+    const counts = {};
+    users.forEach(u => counts[u.name] = 0);
+
+    // Count duties for current year
+    Object.keys(schedule).forEach(key => {
+        const [dateStr, slot] = key.split('_');
+        const [y, m, d] = dateStr.split('-').map(Number);
+
+        if (y === year) {
+            const assignedUser = schedule[key];
+            if (assignedUser && assignedUser !== "Unassigned" && counts.hasOwnProperty(assignedUser)) {
+                counts[assignedUser]++;
+            }
+        }
+    });
+
+    // Render rows
+    users.forEach(u => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${u.name}</td>
+            <td>${counts[u.name]}</td>
+        `;
+        yearlyDutyCountsTableBody.appendChild(row);
     });
 }
 
