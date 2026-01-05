@@ -36,6 +36,7 @@ const userListUl = document.getElementById('user-list-ul');
 const newUserNameInput = document.getElementById('new-user-name');
 const newUserLimitInput = document.getElementById('new-user-limit');
 const addUserBtn = document.getElementById('add-user-btn');
+const clearYearBtn = document.getElementById('clear-year-btn');
 const dutyCountsTableBody = document.querySelector('#duty-counts-table tbody');
 const yearlyDutyCountsTableBody = document.querySelector('#yearly-duty-counts-table tbody');
 
@@ -53,6 +54,7 @@ function init() {
     addConstraintBtn.addEventListener('click', addConstraint);
     generateBtn.addEventListener('click', generateSchedule);
     addUserBtn.addEventListener('click', addUser);
+    if (clearYearBtn) clearYearBtn.addEventListener('click', clearScheduleForYear);
 }
 
 // API Helpers
@@ -293,6 +295,11 @@ function renderConstraints() {
         const [y, m, d] = c.date.split('-').map(Number);
         // Note: m in date string is 1-12, getMonth() is 0-11
         return y === currentYear && (m - 1) === currentMonth;
+    }).sort((a, b) => {
+        // Sort by User Name, then by Date
+        const nameComparison = a.user.localeCompare(b.user);
+        if (nameComparison !== 0) return nameComparison;
+        return a.date.localeCompare(b.date);
     });
 
     if (filteredConstraints.length === 0) {
@@ -402,27 +409,30 @@ window.editUser = async function (index) {
     const newName = prompt("Enter new name:", oldUser.name);
     if (newName === null) return; // Cancelled
 
+    // Trim the input immediately
+    const trimmedName = newName.trim();
+
     const newLimitStr = prompt("Enter new max duties:", oldUser.limit);
     if (newLimitStr === null) return; // Cancelled
 
     const newLimit = parseInt(newLimitStr, 10);
 
-    if (newName && newName.trim() !== "" && !isNaN(newLimit) && newLimit > 0) {
-        if (newName !== oldUser.name && users.some(u => u.name === newName)) {
+    if (trimmedName && trimmedName !== "" && !isNaN(newLimit) && newLimit > 0) {
+        if (trimmedName !== oldUser.name && users.some(u => u.name === trimmedName)) {
             alert("Name already exists!");
             return;
         }
 
         // Optimistic
         const oldName = oldUser.name;
-        users[index] = { name: newName, limit: newLimit };
+        users[index] = { name: trimmedName, limit: newLimit };
 
-        if (oldName !== newName) {
+        if (oldName !== trimmedName) {
             constraints.forEach(c => {
-                if (c.user === oldName) c.user = newName;
+                if (c.user === oldName) c.user = trimmedName;
             });
             Object.keys(schedule).forEach(key => {
-                if (schedule[key] === oldName) schedule[key] = newName;
+                if (schedule[key] === oldName) schedule[key] = trimmedName;
             });
         }
 
@@ -434,7 +444,7 @@ window.editUser = async function (index) {
         renderYearlyDutyCounts();
 
         // Sync
-        await postData('editUser', { oldName, newName, newLimit });
+        await postData('editUser', { oldName, newName: trimmedName, newLimit });
     } else {
         alert("Invalid input.");
     }
@@ -547,63 +557,110 @@ function renderYearlyDutyCounts() {
 
     const year = new Date().getFullYear();
 
-    // Update Header to reflect which year is being shown
+    // Update Header
     const yearlyHeader = document.querySelector('#yearly-duty-counts-table th:nth-child(2)');
     if (yearlyHeader) yearlyHeader.textContent = `Total Duties in ${year}`;
 
-    // Initialize counts
+    // Initialize counts and breakdown
     const counts = {};
-    users.forEach(u => counts[u.name] = 0);
+    const breakdown = {}; // { "User": { 0: 2, 1: 3... } } (Month index -> count)
+
+    users.forEach(u => {
+        counts[u.name] = 0;
+        breakdown[u.name] = {};
+    });
+
+    // Track unique slots to prevent double counting (e.g. '2026-01-01_AM' vs '2026-1-1_AM')
+    const processedSlots = new Set();
 
     // Count duties for current year
     Object.keys(schedule).forEach(key => {
         const [dateStr, slot] = key.split('_');
         const [y, m, d] = dateStr.split('-').map(Number);
 
+        // Normalize unique key: YYYY-MM-DD-SLOT (ensure MM/DD are padded or standard)
+        // using indices: y, m-1, d
+        const uniqueKey = `${y}-${m}-${d}-${slot}`;
+
         if (y === year) {
-            const assignedUser = schedule[key];
-            if (assignedUser && assignedUser !== "Unassigned" && counts.hasOwnProperty(assignedUser)) {
-                counts[assignedUser]++;
+            if (processedSlots.has(uniqueKey)) return; // Skip duplicate representation
+            processedSlots.add(uniqueKey);
+
+            let assignedUser = schedule[key];
+            if (assignedUser && assignedUser !== "Unassigned") {
+                // Ensure robustness
+                assignedUser = String(assignedUser).trim();
+
+                if (counts.hasOwnProperty(assignedUser)) {
+                    counts[assignedUser]++;
+
+                    // Add to breakdown
+                    if (!breakdown[assignedUser][m - 1]) breakdown[assignedUser][m - 1] = 0;
+                    breakdown[assignedUser][m - 1]++;
+                }
             }
         }
     });
 
+    // Month Names for Tooltip
+    const monthNamesShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
     // Render rows
     users.forEach(u => {
         const row = document.createElement('tr');
+
+        // Generate Tooltip Text
+        let tooltipText = `Duties Breakdown for ${u.name}:\n`;
+        const userBreakdown = breakdown[u.name];
+        let hasData = false;
+
+        Object.keys(userBreakdown).sort((a, b) => a - b).forEach(monthIdx => {
+            tooltipText += `${monthNamesShort[monthIdx]}: ${userBreakdown[monthIdx]}\n`;
+            hasData = true;
+        });
+
+        if (!hasData) tooltipText += "No duties assigned this year.";
+
         row.innerHTML = `
             <td>${u.name}</td>
-            <td>${counts[u.name]}</td>
+            <td title="${tooltipText}" style="cursor: help; text-decoration: underline dotted; text-underline-offset: 4px;">${counts[u.name]}</td>
         `;
         yearlyDutyCountsTableBody.appendChild(row);
     });
 }
 
-function assignSlot(dateStr, slot, shiftCounts) {
+function assignNextAvailable(dateStr, slot, queue, monthlyCounts) {
     const key = `${dateStr}_${slot}`;
+    let assignedUser = null;
+    let foundIndex = -1;
 
-    // Find available users
-    const availableUsers = users.filter(user => {
-        // Check constraints
-        const hasConstraint = constraints.some(c =>
+    // Find first available user in queue
+    for (let i = 0; i < queue.length; i++) {
+        const user = queue[i];
+
+        // Check Limit (Month)
+        if (monthlyCounts[user.name] >= user.limit) continue;
+
+        // Check Constraints
+        const isUnavailable = constraints.some(c =>
             c.user === user.name && c.date === dateStr && c.slot === slot
         );
-        if (hasConstraint) return false;
+        if (isUnavailable) continue;
 
-        // Check duty limit
-        if (shiftCounts[user.name] >= user.limit) return false;
+        // Found available user
+        assignedUser = user;
+        foundIndex = i;
+        break;
+    }
 
-        return true;
-    });
+    if (assignedUser) {
+        schedule[key] = assignedUser.name;
+        monthlyCounts[assignedUser.name]++;
 
-    if (availableUsers.length === 0) {
-        schedule[key] = "Unassigned";
+        // Round Robin: Move to back of queue
+        queue.push(queue.splice(foundIndex, 1)[0]);
     } else {
-        // Sort by shift count (asc) to ensure fairness
-        availableUsers.sort((a, b) => shiftCounts[a.name] - shiftCounts[b.name]);
-        const selectedUser = availableUsers[0];
-        schedule[key] = selectedUser.name;
-        shiftCounts[selectedUser.name]++;
+        schedule[key] = "Unassigned";
     }
 }
 
@@ -612,6 +669,40 @@ function formatDate(date) {
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
+}
+
+async function clearScheduleForYear() {
+    const year = new Date().getFullYear();
+
+    if (!confirm(`Are you sure you want to clear ALL scheduled duties for ${year}? This cannot be undone.`)) {
+        return;
+    }
+
+    // Identify keys to remove
+    const keysToRemove = [];
+    Object.keys(schedule).forEach(key => {
+        const [dateStr, _] = key.split('_');
+        const [y, m, d] = dateStr.split('-').map(Number);
+
+        if (y === year) {
+            keysToRemove.push(key);
+        }
+    });
+
+    if (keysToRemove.length === 0) {
+        alert(`No duties found for ${year} to clear.`);
+        return;
+    }
+
+    // Remove locally
+    keysToRemove.forEach(k => delete schedule[k]);
+
+    renderAll();
+
+    // Sync (Overwrite schedule)
+    await postData('saveSchedule', { schedule });
+
+    alert(`Cleared ${keysToRemove.length} duties for ${year}.`);
 }
 
 // Run

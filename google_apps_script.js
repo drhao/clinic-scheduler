@@ -118,12 +118,35 @@ function doPost(e) {
             }
 
         } else if (action === 'editUser') {
-            const sheet = ss.getSheetByName('Users');
-            const values = sheet.getDataRange().getValues();
-            for (let i = 0; i < values.length; i++) {
-                if (values[i][0] === data.oldName) {
-                    sheet.getRange(i + 1, 1).setValue(data.newName);
-                    sheet.getRange(i + 1, 2).setValue(data.newLimit);
+            const oldName = data.oldName;
+            const newName = data.newName;
+            const newLimit = data.newLimit;
+
+            // 1. Update Users Sheet
+            const usersSheet = ss.getSheetByName('Users');
+            const userValues = usersSheet.getDataRange().getValues();
+            for (let i = 0; i < userValues.length; i++) {
+                if (userValues[i][0] === oldName) {
+                    usersSheet.getRange(i + 1, 1).setValue(newName);
+                    usersSheet.getRange(i + 1, 2).setValue(newLimit);
+                }
+            }
+
+            // 2. Update Constraints Sheet
+            const constraintsSheet = ss.getSheetByName('Constraints');
+            const constraintValues = constraintsSheet.getDataRange().getValues();
+            for (let i = 0; i < constraintValues.length; i++) {
+                if (constraintValues[i][0] === oldName) {
+                    constraintsSheet.getRange(i + 1, 1).setValue(newName);
+                }
+            }
+
+            // 3. Update Schedule Sheet
+            const scheduleSheet = ss.getSheetByName('Schedule');
+            const scheduleValues = scheduleSheet.getDataRange().getValues();
+            for (let i = 0; i < scheduleValues.length; i++) {
+                if (scheduleValues[i][1] === oldName) { // Column 2 (Index 1) is Assigned User
+                    scheduleSheet.getRange(i + 1, 2).setValue(newName);
                 }
             }
 
