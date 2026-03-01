@@ -325,7 +325,7 @@ button {
     padding: 2rem;
     overflow-y: auto;
     border: 1px solid var(--border-color);
-    min-width: 300px;
+    min-width: 320px;
 }
 
 .input-group {
@@ -452,8 +452,11 @@ button {
 
 .add-user-row {
     display: flex;
+    flex-wrap: wrap;
+    /* Allows wrapping on smaller screens */
     gap: 0.5rem;
     margin-bottom: 1rem;
+    align-items: center;
 }
 
 .add-user-row input {

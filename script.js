@@ -546,6 +546,25 @@ async function generateSchedule() {
     const month = currentDate.getMonth();
     const lastDay = new Date(year, month + 1, 0).getDate();
 
+    // Check if the current month already has scheduled duties
+    let hasExistingDuties = false;
+    Object.keys(schedule).forEach(key => {
+        const [dateStr, _] = key.split('_');
+        const [y, m, d] = dateStr.split('-').map(Number);
+        if (y === year && (m - 1) === month) {
+            const assignedUser = schedule[key];
+            if (assignedUser && assignedUser !== "Unassigned") {
+                hasExistingDuties = true;
+            }
+        }
+    });
+
+    if (hasExistingDuties) {
+        if (!confirm("本月份已經有排班資料了，這樣會把舊的排班資料洗掉重新排班，確定要清除嗎？")) {
+            return; // Cancelled
+        }
+    }
+
     // 1. Calculate yearly counts for initial queue sorting (Fairness Seed)
     const yearlyCounts = {};
     users.forEach(u => yearlyCounts[u.name] = 0);
