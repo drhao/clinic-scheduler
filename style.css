@@ -1,24 +1,32 @@
 :root {
     /* Pastel Palette */
     --bg-color: #f7f9fc;
-    /* Light gray/blue tint */
     --card-bg: #ffffff;
     --text-color: #4a5568;
     --text-light: #a0aec0;
     --border-color: #e2e8f0;
 
-    --primary-pastel: #b3e5fc;
-    /* Light Blue */
-    --primary-hover: #81d4fa;
-    --secondary-pastel: #c8e6c9;
-    /* Light Green */
-    --secondary-hover: #a5d6a7;
-    --accent-pastel: #e1bee7;
-    /* Light Purple */
+    /* Primary Actions (Blue) */
+    --primary-main: #3182ce;
+    --primary-hover: #2b6cb0;
+    --primary-light: #ebf8ff;
 
-    --btn-text: #2d3748;
-    --danger-color: #ffb7b2;
-    /* Pastel Red */
+    /* Secondary Actions (Teal/Green) */
+    --secondary-main: #38b2ac;
+    --secondary-hover: #319795;
+    --secondary-light: #e6fffa;
+
+    /* Danger Actions (Red) */
+    --danger-main: #e53e3e;
+    --danger-hover: #c53030;
+    --danger-light: #fff5f5;
+
+    /* Highlight Actions (Orange/Yellow) */
+    --warn-main: #ed8936;
+    --warn-hover: #dd6b20;
+
+    --btn-text-light: #ffffff;
+    --btn-text-dark: #2d3748;
 
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -60,17 +68,22 @@ h1 {
     letter-spacing: -0.025em;
 }
 
-/* Buttons */
+/* Buttons Base */
 button {
     font-family: inherit;
-    font-weight: 500;
+    font-weight: 600;
     transition: all 0.2s ease;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
 }
 
+/* Primary Button (Filled) */
 .primary-btn {
-    background-color: var(--primary-pastel);
-    color: var(--btn-text);
+    background-color: var(--primary-main);
+    color: var(--btn-text-light);
     border: none;
     padding: 0.6rem 1.5rem;
     border-radius: var(--radius-pill);
@@ -80,19 +93,64 @@ button {
 .primary-btn:hover {
     background-color: var(--primary-hover);
     transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
 }
 
+/* Secondary Button (Outline) */
 .secondary-btn {
-    background-color: var(--secondary-pastel);
-    color: var(--btn-text);
-    border: none;
+    background-color: #ffffff;
+    color: var(--primary-main);
+    border: 1px solid var(--primary-main);
     padding: 0.5rem 1.2rem;
     border-radius: var(--radius-pill);
     font-size: 0.9rem;
 }
 
 .secondary-btn:hover {
+    background-color: var(--primary-light);
+}
+
+/* Danger Button (Outline) */
+.danger-btn {
+    background-color: #ffffff;
+    color: var(--danger-main);
+    border: 1px solid var(--danger-main);
+    padding: 0.5rem 1.2rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.9rem;
+}
+
+.danger-btn:hover {
+    background-color: var(--danger-light);
+}
+
+/* Action Button (Filled, Small) */
+.action-btn {
+    background-color: var(--secondary-main);
+    color: var(--btn-text-light);
+    border: none;
+    padding: 0.5rem 1.2rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.9rem;
+}
+
+.action-btn:hover {
     background-color: var(--secondary-hover);
+}
+
+/* Icon Buttons (Header/Modals) */
+.icon-btn {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: var(--text-color);
+    padding: 0.4rem;
+    border-radius: 50%;
+}
+
+.icon-btn:hover {
+    background-color: var(--border-color);
 }
 
 /* Layout */
@@ -162,7 +220,7 @@ button {
 }
 
 .calendar-cell:hover {
-    border-color: var(--primary-pastel);
+    border-color: var(--primary-light);
 }
 
 .calendar-cell.header {
@@ -182,8 +240,8 @@ button {
 .calendar-cell.wednesday {
     background-color: #fff;
     /* Keep white, highlight with border or shadow? */
-    border: 1px solid var(--accent-pastel);
-    box-shadow: 0 2px 8px rgba(225, 190, 231, 0.2);
+    border: 1px solid var(--primary-light);
+    box-shadow: 0 2px 8px rgba(49, 130, 206, 0.1);
 }
 
 .day-number {
@@ -388,7 +446,7 @@ button {
 }
 
 .checkbox-group input[type="checkbox"] {
-    accent-color: var(--primary-pastel);
+    accent-color: var(--primary-main);
     width: 1rem;
     height: 1rem;
 }
@@ -416,31 +474,39 @@ button {
 .constraints-list li:hover,
 .user-list-item:hover {
     transform: translateX(2px);
-    border-color: var(--primary-pastel);
+    border-color: var(--primary-main);
 }
 
 .delete-constraint,
 .delete-user-btn {
-    color: var(--danger-color);
+    color: var(--danger-main);
     cursor: pointer;
-    font-weight: bold;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
+    font-weight: 600;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    background: none;
+    border: 1px solid transparent;
 }
 
 .delete-constraint:hover,
 .delete-user-btn:hover {
-    background-color: #fff5f5;
+    background-color: var(--danger-light);
+    color: var(--danger-hover);
 }
 
 .edit-user-btn {
-    color: #90cdf4;
-    /* Soft blue */
-    margin-right: 0.5rem;
+    color: var(--secondary-main);
+    cursor: pointer;
+    font-weight: 600;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    background: none;
+    border: 1px solid transparent;
 }
 
 .edit-user-btn:hover {
-    color: #63b3ed;
+    background-color: var(--secondary-light);
+    color: var(--secondary-hover);
 }
 
 /* Staff Management */
