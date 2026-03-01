@@ -200,8 +200,8 @@ function doPost(e) {
             let startRow = (usersData.length > 0 && usersData[0][0] === "Name") ? 1 : 0;
 
             const month = new Date().getMonth() + 1; // Current month
-            const subject = `[提醒] 請填寫 ${month} 月份不排班時間`;
-            const body = `大家好，\n\n這是一封自動提醒信。\n請記得在 ${month} 月 3 日前至排班網頁填寫本月份的不排班時間，以利後續排班作業進行。\n\n謝謝！\n\n排班系統敬上`;
+            const subject = `[提醒] 請填寫 ${month} 月份旅醫門診不排班時間`;
+            const body = `大家好，\n\n這是一封自動提醒信。\n請記得在 ${month} 月 3 日前至排班網頁填寫本月份的不排班時間，以利後續排班作業進行。\n\n排班網址：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
 
             for (let i = startRow; i < usersData.length; i++) {
                 const email = usersData[i][2];

@@ -143,7 +143,8 @@ button {
 
 .calendar-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    /* Sunday, Monday, Tuesday, Wednesday(wider), Thursday, Friday, Saturday */
+    grid-template-columns: 1fr 1fr 1fr 1.6fr 1fr 1fr 1fr;
     gap: 1rem;
     /* Spacing between cells */
 }
@@ -222,6 +223,22 @@ button {
     font-weight: 600;
     margin-right: 0.5rem;
     opacity: 0.7;
+}
+
+.gcal-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: inherit;
+    text-decoration: none;
+    opacity: 0.6;
+    transition: opacity 0.2s, transform 0.2s;
+    padding: 2px;
+}
+
+.gcal-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
 }
 
 /* Holiday Styles */

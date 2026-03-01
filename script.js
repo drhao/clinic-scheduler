@@ -224,13 +224,24 @@ function renderCalendar() {
                 const amKey = `${dateStr}_AM`;
                 const pmKey = `${dateStr}_PM`;
 
+                const amUser = schedule[amKey] || '-';
+                const pmUser = schedule[pmKey] || '-';
+
                 const amSlot = document.createElement('div');
                 amSlot.className = 'schedule-slot';
-                amSlot.innerHTML = `<strong>AM</strong> ${schedule[amKey] || '-'}`;
+                amSlot.innerHTML = `<div><strong>AM</strong> ${amUser}</div>`;
+                if (amUser !== '-' && amUser !== 'Unassigned') {
+                    const gcalLink = createGCalLink(amUser, dateStr, 'AM');
+                    amSlot.appendChild(gcalLink);
+                }
 
                 const pmSlot = document.createElement('div');
                 pmSlot.className = 'schedule-slot';
-                pmSlot.innerHTML = `<strong>PM</strong> ${schedule[pmKey] || '-'}`;
+                pmSlot.innerHTML = `<div><strong>PM</strong> ${pmUser}</div>`;
+                if (pmUser !== '-' && pmUser !== 'Unassigned') {
+                    const gcalLink = createGCalLink(pmUser, dateStr, 'PM');
+                    pmSlot.appendChild(gcalLink);
+                }
 
                 cell.appendChild(amSlot);
                 cell.appendChild(pmSlot);
@@ -262,6 +273,40 @@ async function toggleHoliday(dateStr, isChecked) {
     renderCalendar();
     renderDutyCounts(); // Schedule might change (cleared slots)
     renderYearlyDutyCounts();
+}
+
+// Google Calendar Helper
+function createGCalLink(titlePrefix, dateStr, slot) {
+    const a = document.createElement('a');
+    a.href = '#';
+    a.className = 'gcal-btn';
+    a.title = 'Add to Google Calendar';
+    // Use an SVG calendar icon instead of just text
+    a.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><line x1="12" y1="15" x2="12" y2="15"></line></svg>`;
+
+    a.onclick = (e) => {
+        e.preventDefault();
+
+        // Slot timings (Example: AM 08:30-11:30, PM 13:30-16:30)
+        let startTime = '083000';
+        let endTime = '113000';
+        if (slot === 'PM') {
+            startTime = '133000';
+            endTime = '163000';
+        }
+
+        const formattedDate = dateStr.replace(/-/g, '');
+        const details = encodeURIComponent('支援台大旅醫門診');
+        const text = encodeURIComponent(`旅醫門診`);
+        // Note: Z assumes UTC, better to omit Z and use local time parameters if strictly necessary, but Google usually parses this as local if no timezone is provided explicitly without Z. Let's send local time.
+
+        // Correct time format for Google Calendar (local time without Z)
+        const localDates = `${formattedDate}T${startTime}/${formattedDate}T${endTime}`;
+
+        const url = `https://calendar.google.com/calendar/r/eventedit?text=${text}&dates=${localDates}&details=${details}`;
+        window.open(url, '_blank');
+    };
+    return a;
 }
 
 // Constraint Management
