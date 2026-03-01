@@ -783,7 +783,7 @@ function formatDate(date) {
 async function clearScheduleForYear() {
     const year = new Date().getFullYear();
 
-    if (!confirm(`Are you sure you want to clear ALL scheduled duties for ${year}? This cannot be undone.`)) {
+    if (!confirm(`【警告】此功能將會清除 ${year} 年「一整年」所有的排班資料！\n\n這通常只在每年年底準備跨入新的一年，需要歸零所有人的排班次數統計時才使用。\n\n確定要清除嗎？（此動作無法復原）`)) {
         return;
     }
 
