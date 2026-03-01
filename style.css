@@ -88,6 +88,7 @@ button {
     padding: 0.6rem 1.5rem;
     border-radius: var(--radius-pill);
     box-shadow: var(--shadow-sm);
+    font-size: 0.9rem;
 }
 
 .primary-btn:hover {
@@ -96,32 +97,36 @@ button {
     box-shadow: var(--shadow-md);
 }
 
-/* Secondary Button (Outline) */
+/* Secondary Button (No Outline, Subdued Background) */
 .secondary-btn {
-    background-color: #ffffff;
-    color: var(--primary-main);
-    border: 1px solid var(--primary-main);
-    padding: 0.5rem 1.2rem;
+    background-color: var(--primary-light);
+    color: var(--primary-hover);
+    border: none;
+    padding: 0.6rem 1.5rem;
     border-radius: var(--radius-pill);
     font-size: 0.9rem;
 }
 
 .secondary-btn:hover {
-    background-color: var(--primary-light);
+    background-color: #dbeafe;
+    /* Slightly darker light blue */
+    color: var(--primary-main);
 }
 
-/* Danger Button (Outline) */
+/* Danger Button (No Outline, Subdued Background) */
 .danger-btn {
-    background-color: #ffffff;
-    color: var(--danger-main);
-    border: 1px solid var(--danger-main);
-    padding: 0.5rem 1.2rem;
+    background-color: var(--danger-light);
+    color: var(--danger-hover);
+    border: none;
+    padding: 0.6rem 1.5rem;
     border-radius: var(--radius-pill);
     font-size: 0.9rem;
 }
 
 .danger-btn:hover {
-    background-color: var(--danger-light);
+    background-color: #fed7d7;
+    /* Slightly darker light red */
+    color: var(--danger-main);
 }
 
 /* Action Button (Filled, Small) */
@@ -129,7 +134,7 @@ button {
     background-color: var(--secondary-main);
     color: var(--btn-text-light);
     border: none;
-    padding: 0.5rem 1.2rem;
+    padding: 0.6rem 1.5rem;
     border-radius: var(--radius-pill);
     font-size: 0.9rem;
 }
