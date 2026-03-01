@@ -14,6 +14,9 @@
     <header>
         <h1>Clinic Scheduler</h1>
         <div class="header-actions">
+            <button id="remind-btn" class="secondary-btn"
+                style="margin-right: 1rem; color: #1565c0; border: 1px solid #1565c0; background: #e3f2fd;">Send
+                Reminders</button>
             <button id="clear-year-btn" class="secondary-btn"
                 style="color: var(--danger-color); background: #fff5f5; border: 1px solid var(--danger-color); margin-right: 1rem;">Clear
                 Year</button>
@@ -100,8 +103,9 @@
             <div class="staff-management">
                 <h3>Manage Staff</h3>
                 <div class="add-user-row">
-                    <input type="text" id="new-user-name" placeholder="New staff name">
-                    <input type="number" id="new-user-limit" placeholder="Max" value="4" min="1" style="width: 80px;">
+                    <input type="text" id="new-user-name" placeholder="Name" style="flex: 1; min-width: 80px;">
+                    <input type="email" id="new-user-email" placeholder="Email" style="flex: 2; min-width: 120px;">
+                    <input type="number" id="new-user-limit" placeholder="Max" value="4" min="1" style="width: 60px;">
                     <button id="add-user-btn" class="secondary-btn">Add</button>
                 </div>
                 <ul id="user-list-ul">

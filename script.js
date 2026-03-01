@@ -34,6 +34,7 @@ const addConstraintBtn = document.getElementById('add-constraint-btn');
 const constraintsUl = document.getElementById('constraints-ul');
 const userListUl = document.getElementById('user-list-ul');
 const newUserNameInput = document.getElementById('new-user-name');
+const newUserEmailInput = document.getElementById('new-user-email');
 const newUserLimitInput = document.getElementById('new-user-limit');
 const addUserBtn = document.getElementById('add-user-btn');
 const clearYearBtn = document.getElementById('clear-year-btn');
@@ -54,7 +55,17 @@ function init() {
     addConstraintBtn.addEventListener('click', addConstraint);
     generateBtn.addEventListener('click', generateSchedule);
     addUserBtn.addEventListener('click', addUser);
+    const remindBtn = document.getElementById('remind-btn');
+    if (remindBtn) remindBtn.addEventListener('click', sendReminders);
     if (clearYearBtn) clearYearBtn.addEventListener('click', clearScheduleForYear);
+}
+
+async function sendReminders() {
+    if (!confirm("確定要發送排班提醒通知信給所有的使用者嗎？")) return;
+    const success = await postData('sendReminders', {});
+    if (success) {
+        alert("提醒信已發送成功！");
+    }
 }
 
 // API Helpers
@@ -339,7 +350,10 @@ function renderUserList() {
         const li = document.createElement('li');
         li.className = 'user-list-item';
         li.innerHTML = `
-            <span id="user-name-${index}">${user.name} (Max: ${user.limit})</span>
+            <div style="display: flex; flex-direction: column; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 70%;">
+                <span id="user-name-${index}">${user.name} (Max: ${user.limit})</span>
+                <span style="font-size: 0.75rem; color: var(--text-light);">${user.email || 'No email'}</span>
+            </div>
             <div class="user-actions">
                 <button class="edit-user-btn" onclick="editUser(${index})">Edit</button>
                 <button class="delete-user-btn" onclick="deleteUser(${index})">Delete</button>
@@ -362,6 +376,7 @@ function updateUserSelect() {
 async function addUser() {
     const name = newUserNameInput.value.trim();
     const limit = parseInt(newUserLimitInput.value, 10);
+    const email = newUserEmailInput ? newUserEmailInput.value.trim() : '';
 
     if (!name || isNaN(limit) || limit < 1) {
         alert("Please enter a valid name and limit.");
@@ -374,8 +389,9 @@ async function addUser() {
     }
 
     // Optimistic
-    users.push({ name, limit });
+    users.push({ name, limit, email });
     newUserNameInput.value = '';
+    if (newUserEmailInput) newUserEmailInput.value = '';
     newUserLimitInput.value = '4';
     renderUserList();
     updateUserSelect();
@@ -383,7 +399,7 @@ async function addUser() {
     renderYearlyDutyCounts();
 
     // Sync
-    await postData('addUser', { name, limit });
+    await postData('addUser', { name, limit, email });
 }
 
 window.deleteUser = async function (index) {
@@ -417,6 +433,9 @@ window.editUser = async function (index) {
 
     const newLimit = parseInt(newLimitStr, 10);
 
+    const newEmail = prompt("Enter new email (optional):", oldUser.email || "");
+    if (newEmail === null) return; // Cancelled
+
     if (trimmedName && trimmedName !== "" && !isNaN(newLimit) && newLimit > 0) {
         if (trimmedName !== oldUser.name && users.some(u => u.name === trimmedName)) {
             alert("Name already exists!");
@@ -425,7 +444,7 @@ window.editUser = async function (index) {
 
         // Optimistic
         const oldName = oldUser.name;
-        users[index] = { name: trimmedName, limit: newLimit };
+        users[index] = { name: trimmedName, limit: newLimit, email: newEmail.trim() };
 
         if (oldName !== trimmedName) {
             constraints.forEach(c => {
@@ -444,7 +463,7 @@ window.editUser = async function (index) {
         renderYearlyDutyCounts();
 
         // Sync
-        await postData('editUser', { oldName, newName: trimmedName, newLimit });
+        await postData('editUser', { oldName, newName: trimmedName, newLimit, newEmail: newEmail.trim() });
     } else {
         alert("Invalid input.");
     }

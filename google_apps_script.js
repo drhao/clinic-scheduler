@@ -31,7 +31,8 @@ function doGet(e) {
             if (usersData[i][0]) {
                 users.push({
                     name: usersData[i][0],
-                    limit: usersData[i][1] || 4
+                    limit: usersData[i][1] || 4,
+                    email: usersData[i][2] || ''
                 });
             }
         }
@@ -106,7 +107,7 @@ function doPost(e) {
     try {
         if (action === 'addUser') {
             const sheet = ss.getSheetByName('Users');
-            sheet.appendRow([data.name, data.limit]);
+            sheet.appendRow([data.name, data.limit, data.email || '']);
 
         } else if (action === 'deleteUser') {
             const sheet = ss.getSheetByName('Users');
@@ -129,6 +130,7 @@ function doPost(e) {
                 if (userValues[i][0] === oldName) {
                     usersSheet.getRange(i + 1, 1).setValue(newName);
                     usersSheet.getRange(i + 1, 2).setValue(newLimit);
+                    usersSheet.getRange(i + 1, 3).setValue(data.newEmail || '');
                 }
             }
 
@@ -192,6 +194,29 @@ function doPost(e) {
                     break;
                 }
             }
+        } else if (action === 'sendReminders') {
+            const usersSheet = ss.getSheetByName('Users');
+            const usersData = usersSheet.getDataRange().getValues();
+            let startRow = (usersData.length > 0 && usersData[0][0] === "Name") ? 1 : 0;
+
+            const month = new Date().getMonth() + 1; // Current month
+            const subject = `[提醒] 請填寫 ${month} 月份不排班時間`;
+            const body = `大家好，\n\n這是一封自動提醒信。\n請記得在 ${month} 月 3 日前至排班網頁填寫本月份的不排班時間，以利後續排班作業進行。\n\n謝謝！\n\n排班系統敬上`;
+
+            for (let i = startRow; i < usersData.length; i++) {
+                const email = usersData[i][2];
+                if (email && String(email).trim() !== "") {
+                    try {
+                        MailApp.sendEmail({
+                            to: String(email).trim(),
+                            subject: subject,
+                            body: body
+                        });
+                    } catch (e) {
+                        // Ignore invalid emails or limits
+                    }
+                }
+            }
         }
 
         return ContentService.createTextOutput(JSON.stringify({ status: 'success' }))
@@ -224,7 +249,7 @@ function formatDate(date) {
 
 function setup() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    if (!ss.getSheetByName('Users')) ss.insertSheet('Users').appendRow(['Name', 'Limit']);
+    if (!ss.getSheetByName('Users')) ss.insertSheet('Users').appendRow(['Name', 'Limit', 'Email']);
     if (!ss.getSheetByName('Constraints')) ss.insertSheet('Constraints').appendRow(['User', 'Date', 'Slot']);
     if (!ss.getSheetByName('Schedule')) ss.insertSheet('Schedule').appendRow(['Key', 'Assigned User']);
     if (!ss.getSheetByName('Holidays')) ss.insertSheet('Holidays').appendRow(['Date']);
