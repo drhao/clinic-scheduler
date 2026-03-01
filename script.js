@@ -287,9 +287,9 @@ function createGCalLink(titlePrefix, dateStr, slot) {
     a.onclick = (e) => {
         e.preventDefault();
 
-        // Slot timings (Example: AM 08:30-11:30, PM 13:30-16:30)
-        let startTime = '083000';
-        let endTime = '113000';
+        // Slot timings (Example: AM 09:00-12:00, PM 13:30-16:30)
+        let startTime = '090000';
+        let endTime = '120000';
         if (slot === 'PM') {
             startTime = '133000';
             endTime = '163000';

@@ -144,7 +144,7 @@ button {
 .calendar-grid {
     display: grid;
     /* Sunday, Monday, Tuesday, Wednesday(wider), Thursday, Friday, Saturday */
-    grid-template-columns: 1fr 1fr 1fr 1.6fr 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr 2.2fr 1fr 1fr 1fr;
     gap: 1rem;
     /* Spacing between cells */
 }
