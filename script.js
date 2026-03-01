@@ -113,7 +113,7 @@ async function fetchData() {
     } catch (err) {
         console.error("Fetch Error:", err);
         // Fallback for demo
-        if (users.length === 0) users = [{ name: "Dr. A", limit: 4 }, { name: "Dr. B", limit: 4 }];
+        if (users.length === 0) users = [{ name: "測試人員 A", limit: 4 }, { name: "測試人員 B", limit: 4 }];
         renderAll();
     } finally {
         setLoading(false);
@@ -173,16 +173,16 @@ function renderCalendar() {
     const month = currentDate.getMonth();
 
     // Update Header
-    const monthNames = ["January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
+    const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月",
+        "七月", "八月", "九月", "十月", "十一月", "十二月"
     ];
-    currentMonthLabel.textContent = `${monthNames[month]} ${year}`;
+    currentMonthLabel.textContent = `${year}年 ${monthNames[month]}`;
 
     // Clear Grid
     calendarGrid.innerHTML = '';
 
     // Render Day Headers
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const days = ['日', '一', '二', '三', '四', '五', '六'];
     days.forEach(day => {
         const cell = document.createElement('div');
         cell.className = 'calendar-cell header';
@@ -230,11 +230,11 @@ function renderCalendar() {
             const holidayCheck = document.createElement('input');
             holidayCheck.type = 'checkbox';
             holidayCheck.checked = isHoliday;
-            holidayCheck.title = "Mark as Holiday";
+            holidayCheck.title = "設為假日";
             holidayCheck.onchange = (e) => toggleHoliday(dateStr, e.target.checked);
 
             const holidayLabel = document.createElement('span');
-            holidayLabel.textContent = "Holiday";
+            holidayLabel.textContent = "假日";
 
             holidayCheckContainer.appendChild(holidayCheck);
             holidayCheckContainer.appendChild(holidayLabel);
@@ -243,7 +243,7 @@ function renderCalendar() {
             if (isHoliday) {
                 const holidayMsg = document.createElement('div');
                 holidayMsg.className = 'holiday-msg';
-                holidayMsg.textContent = "No Duty";
+                holidayMsg.textContent = "停診";
                 cell.appendChild(holidayMsg);
             } else {
                 // Render Slots
@@ -306,7 +306,7 @@ function createGCalLink(titlePrefix, dateStr, slot) {
     const a = document.createElement('a');
     a.href = '#';
     a.className = 'gcal-btn';
-    a.title = 'Add to Google Calendar';
+    a.title = '加入行事曆';
     // Use an SVG calendar icon instead of just text
     a.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><line x1="12" y1="15" x2="12" y2="15"></line></svg>`;
 
@@ -343,7 +343,7 @@ async function addConstraint() {
     const isPm = pmCheck.checked;
 
     if (!user || !date || (!isAm && !isPm)) {
-        alert("Please select a user, date, and at least one time slot.");
+        alert("請選擇人員、日期，並最少勾選一個時段（上午或下午）。");
         return;
     }
 
@@ -385,7 +385,7 @@ function renderConstraints() {
     });
 
     if (filteredConstraints.length === 0) {
-        constraintsUl.innerHTML = '<li style="color: #888; font-style: italic;">No unavailable times for this month.</li>';
+        constraintsUl.innerHTML = '<li style="color: #888; font-style: italic;">本月份無不排班時間</li>';
         return;
     }
 
@@ -423,11 +423,11 @@ function renderUserList() {
         li.innerHTML = `
             <div style="display: flex; flex-direction: column; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 70%;">
                 <span id="user-name-${index}">${user.name} (Max: ${user.limit})</span>
-                <span style="font-size: 0.75rem; color: var(--text-light);">${user.email || 'No email'}</span>
+                <span style="font-size: 0.75rem; color: var(--text-light);">${user.email || '尚未設定 Email'}</span>
             </div>
             <div class="user-actions">
-                <button class="edit-user-btn" onclick="editUser(${index})">Edit</button>
-                <button class="delete-user-btn" onclick="deleteUser(${index})">Delete</button>
+                <button class="edit-user-btn" onclick="editUser(${index})">編輯</button>
+                <button class="delete-user-btn" onclick="deleteUser(${index})">刪除</button>
             </div>
         `;
         userListUl.appendChild(li);
@@ -450,12 +450,12 @@ async function addUser() {
     const email = newUserEmailInput ? newUserEmailInput.value.trim() : '';
 
     if (!name || isNaN(limit) || limit < 1) {
-        alert("Please enter a valid name and limit.");
+        alert("請輸入有效的姓名與每月上限。");
         return;
     }
 
     if (users.some(u => u.name === name)) {
-        alert("User already exists!");
+        alert("此人員已存在！");
         return;
     }
 
@@ -475,7 +475,7 @@ async function addUser() {
 
 window.deleteUser = async function (index) {
     const userToDelete = users[index].name;
-    if (confirm(`Are you sure you want to delete ${userToDelete}?`)) {
+    if (confirm(`確定要刪除「${userToDelete}」嗎？這將會一併移除他在系統中所有設定好的不排班時間。`)) {
         // Optimistic
         users.splice(index, 1);
         constraints = constraints.filter(c => c.user !== userToDelete);
@@ -493,23 +493,23 @@ window.deleteUser = async function (index) {
 
 window.editUser = async function (index) {
     const oldUser = users[index];
-    const newName = prompt("Enter new name:", oldUser.name);
+    const newName = prompt("請輸入新名稱：", oldUser.name);
     if (newName === null) return; // Cancelled
 
     // Trim the input immediately
     const trimmedName = newName.trim();
 
-    const newLimitStr = prompt("Enter new max duties:", oldUser.limit);
+    const newLimitStr = prompt("請輸入新的每月排班上限：", oldUser.limit);
     if (newLimitStr === null) return; // Cancelled
 
     const newLimit = parseInt(newLimitStr, 10);
 
-    const newEmail = prompt("Enter new email (optional):", oldUser.email || "");
+    const newEmail = prompt("請輸入 Email 信箱 (選填)：", oldUser.email || "");
     if (newEmail === null) return; // Cancelled
 
     if (trimmedName && trimmedName !== "" && !isNaN(newLimit) && newLimit > 0) {
         if (trimmedName !== oldUser.name && users.some(u => u.name === trimmedName)) {
-            alert("Name already exists!");
+            alert("名稱已存在！");
             return;
         }
 
@@ -536,7 +536,7 @@ window.editUser = async function (index) {
         // Sync
         await postData('editUser', { oldName, newName: trimmedName, newLimit, newEmail: newEmail.trim() });
     } else {
-        alert("Invalid input.");
+        alert("輸入無效，請檢查姓名與上限是否正確。");
     }
 }
 
@@ -668,7 +668,7 @@ function renderYearlyDutyCounts() {
 
     // Update Header
     const yearlyHeader = document.querySelector('#yearly-duty-counts-table th:nth-child(2)');
-    if (yearlyHeader) yearlyHeader.textContent = `Total Duties in ${year}`;
+    if (yearlyHeader) yearlyHeader.textContent = `${year} 總排班次數`;
 
     // Initialize counts and breakdown
     const counts = {};
@@ -712,23 +712,23 @@ function renderYearlyDutyCounts() {
     });
 
     // Month Names for Tooltip
-    const monthNamesShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthNamesShort = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
     // Render rows
     users.forEach(u => {
         const row = document.createElement('tr');
 
         // Generate Tooltip Text
-        let tooltipText = `Duties Breakdown for ${u.name}:\n`;
+        let tooltipText = `${u.name} 的排班明細：\n`;
         const userBreakdown = breakdown[u.name];
         let hasData = false;
 
         Object.keys(userBreakdown).sort((a, b) => a - b).forEach(monthIdx => {
-            tooltipText += `${monthNamesShort[monthIdx]}: ${userBreakdown[monthIdx]}\n`;
+            tooltipText += `${monthNamesShort[monthIdx]}: ${userBreakdown[monthIdx]} 次\n`;
             hasData = true;
         });
 
-        if (!hasData) tooltipText += "No duties assigned this year.";
+        if (!hasData) tooltipText += "本年度尚未被分配排班。";
 
         row.innerHTML = `
             <td>${u.name}</td>
@@ -769,7 +769,7 @@ function assignNextAvailable(dateStr, slot, queue, monthlyCounts) {
         // Round Robin: Move to back of queue
         queue.push(queue.splice(foundIndex, 1)[0]);
     } else {
-        schedule[key] = "Unassigned";
+        schedule[key] = "未安排";
     }
 }
 
@@ -799,7 +799,7 @@ async function clearScheduleForYear() {
     });
 
     if (keysToRemove.length === 0) {
-        alert(`No duties found for ${year} to clear.`);
+        alert(`${year} 年目前沒有任何排班資料需要清除。`);
         return;
     }
 
@@ -811,7 +811,7 @@ async function clearScheduleForYear() {
     // Sync (Overwrite schedule)
     await postData('saveSchedule', { schedule });
 
-    alert(`Cleared ${keysToRemove.length} duties for ${year}.`);
+    alert(`成功清除了 ${keysToRemove.length} 筆位於 ${year} 年的排班資料。`);
 }
 
 // Run
