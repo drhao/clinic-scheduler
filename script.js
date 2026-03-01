@@ -41,6 +41,11 @@ const clearYearBtn = document.getElementById('clear-year-btn');
 const dutyCountsTableBody = document.querySelector('#duty-counts-table tbody');
 const yearlyDutyCountsTableBody = document.querySelector('#yearly-duty-counts-table tbody');
 
+// Modal Elements
+const guideModal = document.getElementById('guide-modal');
+const helpBtn = document.getElementById('help-btn');
+const closeGuideBtn = document.getElementById('close-guide-btn');
+
 // Initialization
 function init() {
     if (API_URL === "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE") {
@@ -58,6 +63,15 @@ function init() {
     const remindBtn = document.getElementById('remind-btn');
     if (remindBtn) remindBtn.addEventListener('click', sendReminders);
     if (clearYearBtn) clearYearBtn.addEventListener('click', clearScheduleForYear);
+
+    // Modal Event Listeners
+    if (helpBtn) helpBtn.addEventListener('click', () => guideModal.style.display = 'flex');
+    if (closeGuideBtn) closeGuideBtn.addEventListener('click', () => guideModal.style.display = 'none');
+    window.addEventListener('click', (e) => {
+        if (e.target === guideModal) {
+            guideModal.style.display = 'none';
+        }
+    });
 }
 
 async function sendReminders() {

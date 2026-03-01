@@ -12,7 +12,11 @@
 <body>
 
     <header>
-        <h1>Clinic Scheduler</h1>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <h1>Clinic Scheduler</h1>
+            <button id="help-btn" class="icon-btn" title="使用說明"
+                style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--primary-hover);">ℹ️</button>
+        </div>
         <div class="header-actions">
             <button id="remind-btn" class="secondary-btn"
                 style="margin-right: 1rem; color: #1565c0; border: 1px solid #1565c0; background: #e3f2fd;">Send
@@ -113,6 +117,34 @@
                 </ul>
             </div>
         </aside>
+    </div>
+
+    <!-- User Guide Modal -->
+    <div id="guide-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📖 排班系統使用說明</h2>
+                <button id="close-guide-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <ol>
+                    <li><strong>📍 第一週：填寫不排班時間</strong><br>每月初系統會發送 Email 提醒，請在左下方「Manage
+                        Constraints」選擇您的名字、日期（通常是下個月的星期三）和時段（AM/PM），並點擊 Add。</li>
+                    <li><strong>📍 第二週：設定假日</strong><br>排班者請在左側日曆上，將遇到國定節假日的星期三勾選為「Holiday」，該日將不會有人員被排班。</li>
+                    <li><strong>📍 第三週：自動排班</strong><br>排班者點擊右上角的「Generate
+                        Schedule」按鈕。系統會根據大家的不排班時間、每月上限（Max），以及去年的排班次數，公平地進行輪序排班。</li>
+                    <li><strong>📍 第四週：確認與行事曆</strong><br>排班結果出爐後，您可以點擊班表上名字旁邊的「行事曆圖示」，快速將該次門診任務加入到個人的 Google Calendar
+                        之中。</li>
+                </ol>
+                <div class="modal-note">
+                    <strong>💡 提示：</strong>
+                    <ul>
+                        <li>新增人員時可以一併填寫 Email，方便系統自動寄送提醒信。</li>
+                        <li>點擊右上角的「Send Reminders」可以一鍵發送填寫不排班時間的提醒信給大家。</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="script.js"></script>
