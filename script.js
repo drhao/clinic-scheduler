@@ -41,13 +41,13 @@ const clearYearBtn = document.getElementById('clear-year-btn');
 const dutyCountsTableBody = document.querySelector('#duty-counts-table tbody');
 const yearlyDutyCountsTableBody = document.querySelector('#yearly-duty-counts-table tbody');
 
-// Modal Elements
-const guideModal = document.getElementById('guide-modal');
-const helpBtn = document.getElementById('help-btn');
-const closeGuideBtn = document.getElementById('close-guide-btn');
-
 // Initialization
 function init() {
+    // Modal Elements (Fetch inside init to ensure they exist)
+    const guideModal = document.getElementById('guide-modal');
+    const helpBtn = document.getElementById('help-btn');
+    const closeGuideBtn = document.getElementById('close-guide-btn');
+
     if (API_URL === "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE") {
         alert("Please configure the API_URL in script.js with your Google Apps Script deployment URL.");
     }
@@ -65,10 +65,22 @@ function init() {
     if (clearYearBtn) clearYearBtn.addEventListener('click', clearScheduleForYear);
 
     // Modal Event Listeners
-    if (helpBtn) helpBtn.addEventListener('click', () => guideModal.style.display = 'flex');
-    if (closeGuideBtn) closeGuideBtn.addEventListener('click', () => guideModal.style.display = 'none');
+    if (helpBtn && guideModal) {
+        helpBtn.addEventListener('click', () => {
+            guideModal.style.display = 'flex';
+        });
+    } else {
+        console.error("Help button or guide modal not found");
+    }
+
+    if (closeGuideBtn && guideModal) {
+        closeGuideBtn.addEventListener('click', () => {
+            guideModal.style.display = 'none';
+        });
+    }
+
     window.addEventListener('click', (e) => {
-        if (e.target === guideModal) {
+        if (guideModal && e.target === guideModal) {
             guideModal.style.display = 'none';
         }
     });
