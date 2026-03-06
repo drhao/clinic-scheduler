@@ -216,7 +216,7 @@ function doPost(e) {
                 }
 
                 subject = `[提醒] 請填寫 MO旅醫門診 ${targetYear}年${targetMonth}月 不排班時間`;
-                body = `大家好，\n\n這是一封自動提醒信。\n請記得在 ${deadlineMonth} 月 3 日前至排班網頁填寫 ${targetMonth} 月份的不排班時間，以利後續 ${targetMonth} 月的排班作業進行。\n\n排班網址：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
+                body = `大家好，\n\n這是一封自動提醒信。\n請記得在 ${deadlineMonth} 月 3 日前至排班網頁填寫 ${targetMonth} 月份的不排班時間（畫休）。\n\n⚠️ 系統將於每月 5 日自動進行一鍵排班作業，若未填寫畫休，將視同隨時皆可排班，排定後請自行協調換班。\n\n排班網址：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
             }
 
             for (let i = startRow; i < usersData.length; i++) {
@@ -269,4 +269,248 @@ function setup() {
     if (!ss.getSheetByName('Constraints')) ss.insertSheet('Constraints').appendRow(['User', 'Date', 'Slot']);
     if (!ss.getSheetByName('Schedule')) ss.insertSheet('Schedule').appendRow(['Key', 'Assigned User']);
     if (!ss.getSheetByName('Holidays')) ss.insertSheet('Holidays').appendRow(['Date']);
+}
+
+// ==========================================
+// AUTOMATIC SCHEDULING (CRON JOB)
+// ==========================================
+
+/**
+ * Creates a time-driven trigger to run autoGenerateSchedule on the 5th of every month at 1:00 AM.
+ * Run this function manually ONE TIME from the Apps Script editor to set it up.
+ */
+function createMonthlyTrigger() {
+    // Check if trigger already exists to avoid duplicates
+    const triggers = ScriptApp.getProjectTriggers();
+    for (let i = 0; i < triggers.length; i++) {
+        if (triggers[i].getHandlerFunction() === 'autoGenerateSchedule') {
+            Logger.log('Trigger already exists.');
+            return;
+        }
+    }
+
+    ScriptApp.newTrigger("autoGenerateSchedule")
+        .timeBased()
+        .onMonthDay(5)
+        .atHour(1)
+        .create();
+    
+    Logger.log('Monthly trigger created successfully.');
+}
+
+/**
+ * Core auto-scheduling logic. Runs automatically on the 5th of the month.
+ * It schedules duties for the NEXT month.
+ */
+function autoGenerateSchedule() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const lock = LockService.getScriptLock();
+    // Wait up to 30 seconds for other processes to finish
+    if (!lock.tryLock(30000)) {
+        Logger.log('Could not obtain lock, aborting autoGenerateSchedule.');
+        return;
+    }
+
+    try {
+        // 1. Determine Target Month and Year
+        const today = new Date();
+        // The trigger runs on the 5th of the current month. We are scheduling for the NEXT month.
+        let targetYear = today.getFullYear();
+        let targetMonthIdx = today.getMonth() + 1; // 0-indexed + 1 = next month's index
+        
+        if (targetMonthIdx > 11) {
+            targetMonthIdx = 0; // January
+            targetYear++;
+        }
+        
+        const targetMonthDisplay = targetMonthIdx + 1; // 1-12 for display purposes
+        
+        // Ensure we don't accidentally overwrite an existing schedule for the target month
+        const scheduleSheet = ss.getSheetByName('Schedule');
+        const scheduleData = scheduleSheet.getDataRange().getValues();
+        let scheduleMap = {};
+        
+        let startRowSchedule = (scheduleData.length > 0 && scheduleData[0][0] === "Key") ? 1 : 0;
+        let hasExistingDuties = false;
+
+        for (let i = startRowSchedule; i < scheduleData.length; i++) {
+            if (scheduleData[i][0]) {
+                const key = scheduleData[i][0];
+                const assignedUser = scheduleData[i][1];
+                scheduleMap[key] = assignedUser;
+
+                const [dateStr, _] = key.split('_');
+                const [y, m, d] = dateStr.split('-').map(Number);
+                if (y === targetYear && (m - 1) === targetMonthIdx) {
+                    if (assignedUser && assignedUser !== "Unassigned") {
+                        hasExistingDuties = true;
+                    }
+                }
+            }
+        }
+
+        if (hasExistingDuties) {
+            Logger.log(`Target month ${targetYear}-${targetMonthDisplay} already has a schedule. Aborting auto-generation.`);
+            return;
+        }
+
+        // 2. Load Data (Users, Constraints, Holidays)
+        const usersSheet = ss.getSheetByName('Users');
+        const usersData = usersSheet.getDataRange().getValues();
+        let users = [];
+        let startRowUsers = (usersData.length > 0 && usersData[0][0] === "Name") ? 1 : 0;
+        for (let i = startRowUsers; i < usersData.length; i++) {
+            if (usersData[i][0]) {
+                users.push({
+                    name: usersData[i][0],
+                    limit: parseInt(usersData[i][1]) || 4,
+                    email: usersData[i][2] || ''
+                });
+            }
+        }
+
+        const constraintsSheet = ss.getSheetByName('Constraints');
+        const constraintsData = constraintsSheet.getDataRange().getValues();
+        let constraints = [];
+        let startRowConst = (constraintsData.length > 0 && constraintsData[0][0] === "User" && constraintsData[0][1] === "Date") ? 1 : 0;
+        for (let i = startRowConst; i < constraintsData.length; i++) {
+            if (constraintsData[i][0]) {
+                constraints.push({
+                    user: constraintsData[i][0],
+                    date: formatDate(constraintsData[i][1]),
+                    slot: constraintsData[i][2]
+                });
+            }
+        }
+
+        const holidaysSheet = ss.getSheetByName('Holidays');
+        const holidaysData = holidaysSheet.getDataRange().getValues();
+        let holidays = [];
+        let startRowHol = (holidaysData.length > 0 && holidaysData[0][0] === "Date") ? 1 : 0;
+        for (let i = startRowHol; i < holidaysData.length; i++) {
+            if (holidaysData[i][0]) {
+                holidays.push(formatDate(holidaysData[i][0]));
+            }
+        }
+
+        // 3. Fairness Seed: Calculate Yearly Counts excluding the target month
+        const yearlyCounts = {};
+        users.forEach(u => yearlyCounts[u.name] = 0);
+
+        Object.keys(scheduleMap).forEach(key => {
+            const [dateStr, _] = key.split('_');
+            const [y, m, d] = dateStr.split('-').map(Number);
+
+            if (y === targetYear && (m - 1) !== targetMonthIdx) {
+                const assignedUser = scheduleMap[key];
+                if (assignedUser && assignedUser !== "Unassigned" && yearlyCounts.hasOwnProperty(assignedUser)) {
+                    yearlyCounts[assignedUser]++;
+                }
+            }
+        });
+
+        // Initialize Queue sorted by Yearly Count (ASC) then Name (ASC)
+        let queue = [...users].sort((a, b) => {
+            const countA = yearlyCounts[a.name] || 0;
+            const countB = yearlyCounts[b.name] || 0;
+            if (countA !== countB) return countA - countB;
+            return a.name.localeCompare(b.name);
+        });
+
+        const monthlyCounts = {};
+        users.forEach(u => monthlyCounts[u.name] = 0);
+
+        // 4. Iterate over days in target month
+        // We need the number of days in the target month
+        // Date(year, month, 0) gives the last day of the PREVIOUS month. 
+        // So Date(targetYear, targetMonthIdx + 1, 0) gives last day of targetMonthIdx.
+        const lastDayObj = new Date(targetYear, targetMonthIdx + 1, 0);
+        const daysInMonth = lastDayObj.getDate();
+
+        // Helper function for assigning valid user
+        function assignNextAvailable(dateStr, slot) {
+            const key = `${dateStr}_${slot}`;
+            let assignedUser = null;
+            let foundIndex = -1;
+
+            for (let i = 0; i < queue.length; i++) {
+                const user = queue[i];
+
+                if (monthlyCounts[user.name] >= user.limit) continue;
+
+                const isUnavailable = constraints.some(c => 
+                    c.user === user.name && c.date === dateStr && c.slot === slot
+                );
+                if (isUnavailable) continue;
+
+                // Found
+                assignedUser = user;
+                foundIndex = i;
+                break;
+            }
+
+            if (assignedUser) {
+                scheduleMap[key] = assignedUser.name;
+                monthlyCounts[assignedUser.name]++;
+                // Round Robin
+                queue.push(queue.splice(foundIndex, 1)[0]);
+            } else {
+                scheduleMap[key] = "未安排";
+            }
+        }
+
+        // Iterate Slots
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateObj = new Date(targetYear, targetMonthIdx, d);
+            if (dateObj.getDay() === 3) { // Wednesday
+                const dateStr = formatDate(dateObj);
+
+                if (holidays.includes(dateStr)) {
+                    delete scheduleMap[`${dateStr}_AM`];
+                    delete scheduleMap[`${dateStr}_PM`];
+                    continue;
+                }
+
+                assignNextAvailable(dateStr, 'AM');
+                assignNextAvailable(dateStr, 'PM');
+            }
+        }
+
+        // 5. Save Schedule back to Sheet
+        scheduleSheet.clear();
+        scheduleSheet.appendRow(["Key", "Assigned User"]);
+        const rows = [];
+        for (const key in scheduleMap) {
+            rows.push([key, scheduleMap[key]]);
+        }
+        if (rows.length > 0) {
+            scheduleSheet.getRange(2, 1, rows.length, 2).setValues(rows);
+        }
+
+        Logger.log(`Successfully generated schedule for ${targetYear}-${targetMonthDisplay}.`);
+
+        // 6. Send Notifications
+        const subject = `[通知] MO旅醫門診 ${targetYear}年${targetMonthDisplay}月 班表已自動排定`;
+        const body = `大家好，\n\n系統已於今日自動完成 ${targetYear}年${targetMonthDisplay}月 的旅醫門診自動排班作業。\n請至排班網頁確認您的班表，並可以點擊班表上的「行事曆圖示」將門診時段加入您的個人 Google Calendar 中。\n(若需臨時異動，請自行協商換班)\n\n排班網頁：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統自動派發\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
+
+        for (let i = startRowUsers; i < usersData.length; i++) {
+            const email = usersData[i][2];
+            if (email && String(email).trim() !== "") {
+                try {
+                    MailApp.sendEmail({
+                        to: String(email).trim(),
+                        subject: subject,
+                        body: body
+                    });
+                } catch (e) {
+                    Logger.log(`Failed to send email to ${email}`);
+                }
+            }
+        }
+
+    } catch (err) {
+        Logger.log("Error in autoGenerateSchedule: " + err.toString());
+    } finally {
+        lock.releaseLock();
+    }
 }
