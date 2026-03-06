@@ -9,6 +9,7 @@ A lightweight, single-page web application for managing weekly (Wednesday) clini
 ## Features
 
 - **Round Robin Scheduling**: Ensures fair distribution of duties using a queue-based system.
+- **Auto-Scheduling & Notifications**: Automatically generates schedules on the 5th of every month and sends out contextual email reminders/notifications to all staff.
 - **Duty Limits**: Set maximum monthly shifts per staff member.
 - **Global Holidays**: Mark specific Wednesdays as holidays to prevent assignments.
 - **Duty Summaries**: View real-time monthly and yearly duty counts.
@@ -31,13 +32,14 @@ This application runs entirely in the browser (`index.html`) but requires a Goog
 1. Open your Google Sheet.
 2. Go to **Extensions > Apps Script**.
 3. Copy the content of `google_apps_script.js` from this project into the script editor (`Code.gs`).
-4. Click **Deploy > New deployment**.
-5. Select **Type: Web app**.
-6. Set **Description** (e.g., "v1").
-7. Set **Execute as**: `Me` (your email).
-8. Set **Who has access**: `Anyone` (IMPORTANT for the SPA to access it).
-9. Click **Deploy**.
-10. Copy the **Web App URL** (it ends in `/exec`).
+4. **(Important!) Enable Auto-Scheduling**: Select the `createMonthlyTrigger` function from the top dropdown in the editor and click **Run**. This authorizes the script and sets up a background cron job to automatically assign duties and send emails on the 5th of every month.
+5. Click **Deploy > New deployment**.
+6. Select **Type: Web app**.
+7. Set **Description** (e.g., "v1").
+8. Set **Execute as**: `Me` (your email).
+9. Set **Who has access**: `Anyone` (IMPORTANT for the SPA to access it).
+10. Click **Deploy**.
+11. Copy the **Web App URL** (it ends in `/exec`).
 
 ### 3. Connect Frontend
 1. Open `script.js` in this project.

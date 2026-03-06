@@ -26,9 +26,14 @@ If a staff member is unavailable on a specific day (e.g., taking leave):
 4.  **Time**: Check "Wednesday AM" or "Wednesday PM" (or both).
 5.  Click **"Add Unavailable Time"**.
 
-## 5. Generating the Schedule
-Once you have updated your staff, holidays, and constraints:
-1.  Click the **"Generate Schedule"** button in the top-right corner.
+## 5. Automatic Schedule Generation
+**⚠️ Important Scheduling Rules:**
+The system is configured to **automatically generate the schedule on the 5th of every month** for the immediate *following* month.
+- **Please fill out your unavailability by the 3rd of the month.**
+- Any constraints missing by the 5th will be ignored (assumed entirely available). Once generated, any changes must be resolved manually via shift swapping with colleagues.
+
+*(For manual overrides)*
+1.  Click the **"✨ Generate Schedule"** button in the top-right corner.
 2.  The system will automatically assign staff to the empty slots using a fair "Round Robin" system.
     -   It respects duty limits.
     -   It skips holidays.
