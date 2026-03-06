@@ -87,10 +87,41 @@ function init() {
 }
 
 async function sendReminders() {
-    if (!confirm("確定要發送排班提醒通知信給所有的使用者嗎？")) return;
-    const success = await postData('sendReminders', {});
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+
+    // Check if the current month already has scheduled duties
+    let hasExistingDuties = false;
+    Object.keys(schedule).forEach(key => {
+        const [dateStr, _] = key.split('_');
+        const [y, m, d] = dateStr.split('-').map(Number);
+        if (y === year && (m - 1) === month) {
+            const assignedUser = schedule[key];
+            if (assignedUser && assignedUser !== "Unassigned") {
+                hasExistingDuties = true;
+            }
+        }
+    });
+
+    const monthName = month + 1;
+    let confirmMsg = "";
+
+    if (hasExistingDuties) {
+        confirmMsg = `目前畫面上 ${year}年${monthName}月 的班表「已經排班完成」。\n\n確定要發送【已完成班表】通知信給所有人嗎？`;
+    } else {
+        confirmMsg = `目前畫面上 ${year}年${monthName}月 的班表「尚未排班」。\n\n確定要發送【填寫畫休時間提醒】通知信給所有人嗎？`;
+    }
+
+    if (!confirm(confirmMsg)) return;
+
+    const success = await postData('sendReminders', {
+        year: year,
+        month: monthName,
+        isScheduled: hasExistingDuties
+    });
+
     if (success) {
-        alert("提醒信已發送成功！");
+        alert("通知信已發送成功！");
     }
 }
 

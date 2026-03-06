@@ -17,7 +17,7 @@
             <button id="help-btn" class="secondary-btn" title="查看使用說明" style="font-size: 0.9rem;">📖 使用說明</button>
         </div>
         <div class="header-actions">
-            <button id="remind-btn" class="secondary-btn">✉️ 發送提醒信</button>
+            <button id="remind-btn" class="secondary-btn">✉️ 發送通知信 (提醒排班/班表)</button>
             <button id="clear-year-btn" class="danger-btn">🗑️ 清除整年班表</button>
             <button id="generate-btn" class="primary-btn">✨ 一鍵排班</button>
         </div>
@@ -135,7 +135,12 @@
                     <strong>💡 提示：</strong>
                     <ul>
                         <li>新增人員時可以一併填寫 Email，方便系統自動寄送提醒信。</li>
-                        <li>點擊右上角的「Send Reminders」可以一鍵發送填寫不排班時間的提醒信給大家。</li>
+                        <li>點擊右上角的「發送通知信」會根據畫面上當月的排班狀態判定：
+                            <ul>
+                                <li>若<strong>尚未排班</strong>：會發送「提醒填寫下個月畫休」的通知信。</li>
+                                <li>若<strong>已經排班</strong>：會發送「班表已出爐」的結果通知信。</li>
+                            </ul>
+                        </li>
                     </ul>
                 </div>
             </div>

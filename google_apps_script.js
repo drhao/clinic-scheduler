@@ -199,9 +199,25 @@ function doPost(e) {
             const usersData = usersSheet.getDataRange().getValues();
             let startRow = (usersData.length > 0 && usersData[0][0] === "Name") ? 1 : 0;
 
-            const month = new Date().getMonth() + 1; // Current month
-            const subject = `[提醒] 請填寫 ${month} 月份旅醫門診不排班時間`;
-            const body = `大家好，\n\n這是一封自動提醒信。\n請記得在 ${month} 月 3 日前至排班網頁填寫本月份的不排班時間，以利後續排班作業進行。\n\n排班網址：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
+            const targetYear = data.year || new Date().getFullYear();
+            const targetMonth = data.month || (new Date().getMonth() + 1);
+            const isScheduled = data.isScheduled;
+
+            let subject = "";
+            let body = "";
+
+            if (isScheduled) {
+                subject = `[通知] MO旅醫門診 ${targetYear}年${targetMonth}月 班表已排定`;
+                body = `大家好，\n\n${targetYear}年${targetMonth}月 的旅醫門診班表已經排定。\n請至排班網頁確認您的班表，並可以點擊班表上的「行事曆圖示」將門診時段加入您的個人 Google Calendar 中。\n\n排班網頁：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
+            } else {
+                let deadlineMonth = targetMonth - 1;
+                if (deadlineMonth === 0) {
+                    deadlineMonth = 12; // Handle January -> December
+                }
+
+                subject = `[提醒] 請填寫 MO旅醫門診 ${targetYear}年${targetMonth}月 不排班時間`;
+                body = `大家好，\n\n這是一封自動提醒信。\n請記得在 ${deadlineMonth} 月 3 日前至排班網頁填寫 ${targetMonth} 月份的不排班時間，以利後續 ${targetMonth} 月的排班作業進行。\n\n排班網址：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
+            }
 
             for (let i = startRow; i < usersData.length; i++) {
                 const email = usersData[i][2];
