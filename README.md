@@ -75,12 +75,13 @@
 若您是接手此專案的開發者或管理員，請按照以下步驟完成部署：
 
 ### 第一步：建立後端 (Google Sheets + Apps Script)
-
 1. 建立一個全新的 **Google Sheets (Google 試算表)**。
 2. 點擊試算表選單上的 `擴充功能 (Extensions)` -> `Apps Script`。
 3. 將本專案中的 `google_apps_script.js` 檔案內容，完全複製並貼上到 Apps Script 的編輯器中（取代原本的 `Code.gs`）。
 4. （選用，初次建置時）在編輯器上方選擇並執行 `setup()` 函式，程式會自動幫您在試算表中建立好 `Users`, `Constraints`, `Schedule`, `Holidays` 四個分頁。
-5. **（重要！）啟用自動排班**：在編輯器上方的下拉選單中選擇 `createMonthlyTrigger` 函式並點擊「執行 (Run)」。這將授權並建立一個背景排程（Cron Job），每月 5 日凌晨 1 點系統將自動進行下個月的排班與發送通知。
+5. **（重要！）啟用自動排班與提醒**：在編輯器上方的下拉選單中選擇 `createMonthlyTriggers` 函式並點擊「執行 (Run)」。這將授權並建立兩個背景排程（Cron Job）：
+   - **每月 1 日凌晨 1 點**：自動發送 Email 提醒所有人填寫下個月的畫休。
+   - **每月 5 日凌晨 1 點**：系統將自動進行下個月的排班與發送結果通知。
 6. 點擊右上角的 **「部署 (Deploy)」** -> **「新增部署 (New deployment)」**。
 7. 選擇類型為 **「網頁應用程式 (Web app)」**。
 8. 設定：

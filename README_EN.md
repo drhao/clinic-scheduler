@@ -32,7 +32,9 @@ This application runs entirely in the browser (`index.html`) but requires a Goog
 1. Open your Google Sheet.
 2. Go to **Extensions > Apps Script**.
 3. Copy the content of `google_apps_script.js` from this project into the script editor (`Code.gs`).
-4. **(Important!) Enable Auto-Scheduling**: Select the `createMonthlyTrigger` function from the top dropdown in the editor and click **Run**. This authorizes the script and sets up a background cron job to automatically assign duties and send emails on the 5th of every month.
+4. **(Important!) Enable Auto-Scheduling & Reminders**: Select the `createMonthlyTriggers` function from the top dropdown in the editor and click **Run**. This authorizes the script and sets up two background cron jobs:
+   - **1st of the month at 1:00 AM**: Sends a reminder email to fill out availability.
+   - **5th of the month at 1:00 AM**: Automatically generates the schedule and sends the results.
 5. Click **Deploy > New deployment**.
 6. Select **Type: Web app**.
 7. Set **Description** (e.g., "v1").

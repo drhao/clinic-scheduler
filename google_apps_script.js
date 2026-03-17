@@ -276,26 +276,93 @@ function setup() {
 // ==========================================
 
 /**
- * Creates a time-driven trigger to run autoGenerateSchedule on the 5th of every month at 1:00 AM.
+ * Creates two time-driven triggers:
+ * 1. autoSendReminderEmail on the 1st of every month at 1:00 AM.
+ * 2. autoGenerateSchedule on the 5th of every month at 1:00 AM.
  * Run this function manually ONE TIME from the Apps Script editor to set it up.
  */
-function createMonthlyTrigger() {
-    // Check if trigger already exists to avoid duplicates
+function createMonthlyTriggers() {
     const triggers = ScriptApp.getProjectTriggers();
+    let hasReminderTrigger = false;
+    let hasScheduleTrigger = false;
+
+    // Check if triggers already exist
     for (let i = 0; i < triggers.length; i++) {
-        if (triggers[i].getHandlerFunction() === 'autoGenerateSchedule') {
-            Logger.log('Trigger already exists.');
-            return;
-        }
+        const handlerName = triggers[i].getHandlerFunction();
+        if (handlerName === 'autoSendReminderEmail') hasReminderTrigger = true;
+        if (handlerName === 'autoGenerateSchedule') hasScheduleTrigger = true;
     }
 
-    ScriptApp.newTrigger("autoGenerateSchedule")
-        .timeBased()
-        .onMonthDay(5)
-        .atHour(1)
-        .create();
+    if (!hasReminderTrigger) {
+        ScriptApp.newTrigger("autoSendReminderEmail")
+            .timeBased()
+            .onMonthDay(1)
+            .atHour(1)
+            .create();
+        Logger.log('1st of the month reminder trigger created successfully.');
+    } else {
+        Logger.log('Reminder trigger already exists.');
+    }
+
+    if (!hasScheduleTrigger) {
+        ScriptApp.newTrigger("autoGenerateSchedule")
+            .timeBased()
+            .onMonthDay(5)
+            .atHour(1)
+            .create();
+        Logger.log('5th of the month schedule trigger created successfully.');
+    } else {
+        Logger.log('Schedule trigger already exists.');
+    }
+}
+
+/**
+ * Runs automatically on the 1st of the month to remind users to fill out next month's availability.
+ */
+function autoSendReminderEmail() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
     
-    Logger.log('Monthly trigger created successfully.');
+    // 1. Determine Target Month and Year
+    const today = new Date();
+    // The trigger runs on the 1st of the current month. We are reminding for the NEXT month.
+    let targetYear = today.getFullYear();
+    let targetMonthIdx = today.getMonth() + 1; // 0-indexed + 1 = next month's index
+    
+    let currentMonthDisplay = today.getMonth() + 1; // The current month (deadline month)
+
+    if (targetMonthIdx > 11) {
+        targetMonthIdx = 0; // January
+        targetYear++;
+    }
+    
+    const targetMonthDisplay = targetMonthIdx + 1; // 1-12 for display purposes
+
+    // 2. Load Users Data
+    const usersSheet = ss.getSheetByName('Users');
+    const usersData = usersSheet.getDataRange().getValues();
+    let startRowUsers = (usersData.length > 0 && usersData[0][0] === "Name") ? 1 : 0;
+
+    // 3. Construct Email Content
+    const subject = `[提醒] 請填寫 MO旅醫門診 ${targetYear}年${targetMonthDisplay}月 不排班時間（畫休）`;
+    const body = `大家好，\n\n這是一封自動提醒信。\n請記得在 ${currentMonthDisplay} 月 3 日前至排班網頁填寫 ${targetMonthDisplay} 月份的不排班時間（畫休）。\n\n⚠️ 系統將於每月 5 日自動進行一鍵排班作業，若未填寫畫休，將視同隨時皆可排班，排定後請自行協調換班。\n\n排班網址：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統自動派發\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
+
+    // 4. Send Emails
+    for (let i = startRowUsers; i < usersData.length; i++) {
+        const email = usersData[i][2];
+        if (email && String(email).trim() !== "") {
+            try {
+                MailApp.sendEmail({
+                    to: String(email).trim(),
+                    subject: subject,
+                    body: body
+                });
+            } catch (e) {
+                Logger.log(`Failed to send reminder email to ${email}`);
+            }
+        }
+    }
+    
+    Logger.log(`Successfully sent email reminders for target month ${targetYear}-${targetMonthDisplay}.`);
 }
 
 /**
