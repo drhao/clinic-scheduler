@@ -378,11 +378,25 @@ async function addConstraint() {
         return;
     }
 
-    // Optimistic Update
+    // Check for duplicates and create new constraints array
     const newConstraints = [];
-    if (isAm) newConstraints.push({ user, date, slot: 'AM' });
-    if (isPm) newConstraints.push({ user, date, slot: 'PM' });
+    if (isAm) {
+        if (!constraints.some(c => c.user === user && c.date === date && c.slot === 'AM')) {
+            newConstraints.push({ user, date, slot: 'AM' });
+        }
+    }
+    if (isPm) {
+        if (!constraints.some(c => c.user === user && c.date === date && c.slot === 'PM')) {
+            newConstraints.push({ user, date, slot: 'PM' });
+        }
+    }
 
+    if (newConstraints.length === 0) {
+        alert("該人員在指定的日期和時段已經有填寫紀錄，請勿重複新增。");
+        return;
+    }
+
+    // Optimistic Update
     constraints.push(...newConstraints);
     renderConstraints();
 

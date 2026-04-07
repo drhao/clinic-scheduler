@@ -154,7 +154,17 @@ function doPost(e) {
 
         } else if (action === 'addConstraint') {
             const sheet = ss.getSheetByName('Constraints');
-            sheet.appendRow([data.user, data.date, data.slot]);
+            const values = sheet.getDataRange().getValues();
+            let exists = false;
+            for (let i = 0; i < values.length; i++) {
+                if (values[i][0] === data.user && formatDate(values[i][1]) === data.date && values[i][2] === data.slot) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                sheet.appendRow([data.user, data.date, data.slot]);
+            }
 
         } else if (action === 'removeConstraint') {
             const sheet = ss.getSheetByName('Constraints');
