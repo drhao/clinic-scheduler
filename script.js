@@ -95,12 +95,24 @@ function init() {
     if (cancelEditUserBtn) cancelEditUserBtn.addEventListener('click', closeEditUserModal);
     if (closeEditUserBtn) closeEditUserBtn.addEventListener('click', closeEditUserModal);
 
+    // Manual assign / swap modal
+    const assignSlotModal = document.getElementById('assign-slot-modal');
+    const saveAssignSlotBtn = document.getElementById('save-assign-slot-btn');
+    const cancelAssignSlotBtn = document.getElementById('cancel-assign-slot-btn');
+    const closeAssignSlotBtn = document.getElementById('close-assign-slot-btn');
+    if (saveAssignSlotBtn) saveAssignSlotBtn.addEventListener('click', saveAssignSlot);
+    if (cancelAssignSlotBtn) cancelAssignSlotBtn.addEventListener('click', closeAssignSlotModal);
+    if (closeAssignSlotBtn) closeAssignSlotBtn.addEventListener('click', closeAssignSlotModal);
+
     window.addEventListener('click', (e) => {
         if (guideModal && e.target === guideModal) {
             guideModal.style.display = 'none';
         }
         if (editUserModal && e.target === editUserModal) {
             closeEditUserModal();
+        }
+        if (assignSlotModal && e.target === assignSlotModal) {
+            closeAssignSlotModal();
         }
     });
 }
@@ -397,11 +409,14 @@ async function toggleHoliday(dateStr, isChecked) {
 }
 
 // Builds one AM/PM schedule cell. The doctor name is set via textContent
-// (never innerHTML) so a name can never inject markup.
+// (never innerHTML) so a name can never inject markup. Clicking the slot opens
+// the manual assign/swap modal.
 function buildScheduleSlot(slot, user, dateStr) {
     const div = document.createElement('div');
     div.className = 'schedule-slot';
     if (isUnassigned(user)) div.classList.add('unassigned');
+    div.title = '點擊指派 / 換班';
+    div.addEventListener('click', () => openAssignModal(dateStr, slot));
 
     const inner = document.createElement('div');
     const strong = document.createElement('strong');
@@ -427,6 +442,7 @@ function createGCalLink(titlePrefix, dateStr, slot) {
 
     a.onclick = (e) => {
         e.preventDefault();
+        e.stopPropagation(); // don't also trigger the slot's assign-modal click
 
         // Slot timings (Example: AM 09:00-12:00, PM 13:30-16:30)
         let startTime = '090000';
@@ -743,6 +759,99 @@ async function saveEditUser() {
     closeEditUserModal();
 
     const ok = await postData('editUser', { oldName, newName: trimmedName, newLimit, newEmail });
+    if (!ok) restoreState(snap);
+}
+
+// ---- Manual slot assignment / swap ----
+// The "YYYY-MM-DD_AM|PM" key currently open in the assign modal (null = closed).
+let assigningSlotKey = null;
+
+function openAssignModal(dateStr, slot) {
+    assigningSlotKey = `${dateStr}_${slot}`;
+    const slotName = slot === 'AM' ? '上午' : '下午';
+    document.getElementById('assign-slot-info').textContent = `${dateStr}（${slotName}）`;
+
+    // Monthly counts for this slot's month, to flag who is near their limit.
+    const [y, m] = dateStr.split('-').map(Number);
+    const monthlyCounts = {};
+    users.forEach(u => monthlyCounts[u.name] = 0);
+    Object.keys(schedule).forEach(key => {
+        const [ds] = key.split('_');
+        const [yy, mm] = ds.split('-').map(Number);
+        if (yy === y && mm === m) {
+            const who = schedule[key];
+            if (!isUnassigned(who) && monthlyCounts.hasOwnProperty(who)) monthlyCounts[who]++;
+        }
+    });
+
+    const otherUser = schedule[`${dateStr}_${slot === 'AM' ? 'PM' : 'AM'}`];
+    const current = schedule[assigningSlotKey];
+
+    const select = document.getElementById('assign-slot-select');
+    select.innerHTML = '';
+
+    // First option: leave the slot unassigned.
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = '— 未安排 —';
+    if (!current || current === '-' || isUnassigned(current)) none.selected = true;
+    select.appendChild(none);
+
+    users.forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.name;
+        const flags = [];
+        if (constraints.some(c => c.user === u.name && c.date === dateStr && c.slot === slot)) flags.push('已畫休');
+        if (otherUser === u.name) flags.push('同日已排');
+        const atLimit = monthlyCounts[u.name] >= u.limit ? ' 已達上限' : '';
+        let label = `${u.name}（本月 ${monthlyCounts[u.name]}/${u.limit}${atLimit}）`;
+        if (flags.length) label += ' ⚠️ ' + flags.join('、');
+        opt.textContent = label;
+        if (current === u.name) opt.selected = true;
+        select.appendChild(opt);
+    });
+
+    document.getElementById('assign-slot-modal').style.display = 'flex';
+}
+
+function closeAssignSlotModal() {
+    document.getElementById('assign-slot-modal').style.display = 'none';
+    assigningSlotKey = null;
+}
+
+async function saveAssignSlot() {
+    if (!assigningSlotKey) return;
+    const key = assigningSlotKey;
+    const [dateStr, slot] = key.split('_');
+    const chosen = document.getElementById('assign-slot-select').value; // '' = unassigned
+
+    // Manual assignment is an override, but warn when it breaks a rule.
+    if (chosen) {
+        const warnings = [];
+        if (constraints.some(c => c.user === chosen && c.date === dateStr && c.slot === slot)) {
+            warnings.push('・該醫師當天此時段有畫休');
+        }
+        if (schedule[`${dateStr}_${slot === 'AM' ? 'PM' : 'AM'}`] === chosen) {
+            warnings.push('・該醫師同一天已被排另一個時段');
+        }
+        if (warnings.length && !confirm(`此指派有以下提醒：\n${warnings.join('\n')}\n\n仍要指派嗎？`)) {
+            return; // keep the modal open so they can pick someone else
+        }
+    }
+
+    const newValue = chosen || UNASSIGNED;
+    if (schedule[key] === newValue) { closeAssignSlotModal(); return; } // no change
+
+    // Optimistic update with rollback
+    const snap = snapshotState();
+    schedule[key] = newValue;
+
+    renderCalendar();
+    renderDutyCounts();
+    renderYearlyDutyCounts();
+    closeAssignSlotModal();
+
+    const ok = await postData('saveSchedule', { schedule });
     if (!ok) restoreState(snap);
 }
 

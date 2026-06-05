@@ -136,6 +136,7 @@
                     <ul>
                         <li><strong>全自動排班系統</strong>：系統將於<span class="text-danger">每月 5 日直接進行一鍵排班</span>，為大家排定「下一個月」的班表。</li>
                         <li><strong>填寫死線</strong>：請於<span class="text-danger">每月 3 日前</span>填寫完畢下個月的畫休。若未填寫者視同皆可排班，排定後如需異動請自行協商。</li>
+                        <li><strong>手動指派／換班</strong>：直接<span class="text-danger">點擊日曆上任一個 AM／PM 時段</span>，即可單獨指派或更換該格的人員，不需整月重排。</li>
                         <li>點擊右上角的「發送通知信」會根據畫面上當月的排班狀態判定：
                             <ul>
                                 <li>若<strong>尚未排班</strong>：發送「提醒填寫下個月畫休」通知信，並警告每月 5 日將自動排班。</li>
@@ -169,6 +170,27 @@
                     <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem;">
                         <button id="cancel-edit-user-btn" class="secondary-btn">取消</button>
                         <button id="save-edit-user-btn" class="action-btn">儲存</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Assign / Swap Slot Modal -->
+    <div id="assign-slot-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header">
+                <h2>✏️ 指派 / 換班</h2>
+                <button id="close-assign-slot-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group" style="margin-bottom: 0;">
+                    <p id="assign-slot-info" style="margin-bottom: 1rem; font-weight: 600; color: var(--text-color);"></p>
+                    <label for="assign-slot-select">指派人員：</label>
+                    <select id="assign-slot-select"></select>
+                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem;">
+                        <button id="cancel-assign-slot-btn" class="secondary-btn">取消</button>
+                        <button id="save-assign-slot-btn" class="action-btn">儲存</button>
                     </div>
                 </div>
             </div>
