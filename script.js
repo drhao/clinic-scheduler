@@ -338,26 +338,8 @@ function renderCalendar() {
                 const amUser = schedule[amKey] || '-';
                 const pmUser = schedule[pmKey] || '-';
 
-                const amSlot = document.createElement('div');
-                amSlot.className = 'schedule-slot';
-                if (isUnassigned(amUser)) amSlot.classList.add('unassigned');
-                amSlot.innerHTML = `<div><strong>AM</strong> ${amUser}</div>`;
-                if (amUser !== '-' && !isUnassigned(amUser)) {
-                    const gcalLink = createGCalLink(amUser, dateStr, 'AM');
-                    amSlot.appendChild(gcalLink);
-                }
-
-                const pmSlot = document.createElement('div');
-                pmSlot.className = 'schedule-slot';
-                if (isUnassigned(pmUser)) pmSlot.classList.add('unassigned');
-                pmSlot.innerHTML = `<div><strong>PM</strong> ${pmUser}</div>`;
-                if (pmUser !== '-' && !isUnassigned(pmUser)) {
-                    const gcalLink = createGCalLink(pmUser, dateStr, 'PM');
-                    pmSlot.appendChild(gcalLink);
-                }
-
-                cell.appendChild(amSlot);
-                cell.appendChild(pmSlot);
+                cell.appendChild(buildScheduleSlot('AM', amUser, dateStr));
+                cell.appendChild(buildScheduleSlot('PM', pmUser, dateStr));
             }
         }
 
@@ -412,6 +394,26 @@ async function toggleHoliday(dateStr, isChecked) {
     renderCalendar();
     renderDutyCounts(); // Schedule might change (cleared slots)
     renderYearlyDutyCounts();
+}
+
+// Builds one AM/PM schedule cell. The doctor name is set via textContent
+// (never innerHTML) so a name can never inject markup.
+function buildScheduleSlot(slot, user, dateStr) {
+    const div = document.createElement('div');
+    div.className = 'schedule-slot';
+    if (isUnassigned(user)) div.classList.add('unassigned');
+
+    const inner = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.textContent = slot;
+    inner.appendChild(strong);
+    inner.appendChild(document.createTextNode(' ' + user));
+    div.appendChild(inner);
+
+    if (user !== '-' && !isUnassigned(user)) {
+        div.appendChild(createGCalLink(user, dateStr, slot));
+    }
+    return div;
 }
 
 // Google Calendar Helper
@@ -527,10 +529,17 @@ function renderConstraints() {
         const originalIndex = constraints.indexOf(c);
 
         const li = document.createElement('li');
-        li.innerHTML = `
-            <span>${c.user} – ${c.date} (${c.slot})</span>
-            <span class="delete-constraint" onclick="removeConstraint(${originalIndex})">×</span>
-        `;
+
+        const label = document.createElement('span');
+        label.textContent = `${c.user} – ${c.date} (${c.slot})`;
+
+        const del = document.createElement('span');
+        del.className = 'delete-constraint';
+        del.textContent = '×';
+        del.addEventListener('click', () => removeConstraint(originalIndex));
+
+        li.appendChild(label);
+        li.appendChild(del);
         constraintsUl.appendChild(li);
     });
 }
@@ -554,16 +563,39 @@ function renderUserList() {
     users.forEach((user, index) => {
         const li = document.createElement('li');
         li.className = 'user-list-item';
-        li.innerHTML = `
-            <div style="display: flex; flex-direction: column; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 70%;">
-                <span id="user-name-${index}">${user.name} (Max: ${user.limit})</span>
-                <span style="font-size: 0.75rem; color: var(--text-light);">${user.email || '尚未設定 Email'}</span>
-            </div>
-            <div class="user-actions">
-                <button class="edit-user-btn" onclick="editUser(${index})">編輯</button>
-                <button class="delete-user-btn" onclick="deleteUser(${index})">刪除</button>
-            </div>
-        `;
+
+        const info = document.createElement('div');
+        info.style.cssText = 'display: flex; flex-direction: column; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 70%;';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.id = `user-name-${index}`;
+        nameSpan.textContent = `${user.name} (Max: ${user.limit})`;
+
+        const emailSpan = document.createElement('span');
+        emailSpan.style.cssText = 'font-size: 0.75rem; color: var(--text-light);';
+        emailSpan.textContent = user.email || '尚未設定 Email';
+
+        info.appendChild(nameSpan);
+        info.appendChild(emailSpan);
+
+        const actions = document.createElement('div');
+        actions.className = 'user-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'edit-user-btn';
+        editBtn.textContent = '編輯';
+        editBtn.addEventListener('click', () => editUser(index));
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-user-btn';
+        deleteBtn.textContent = '刪除';
+        deleteBtn.addEventListener('click', () => deleteUser(index));
+
+        actions.appendChild(editBtn);
+        actions.appendChild(deleteBtn);
+
+        li.appendChild(info);
+        li.appendChild(actions);
         userListUl.appendChild(li);
     });
 }
@@ -770,7 +802,7 @@ function renderDutyCounts() {
 
         if (y === year && (m - 1) === month) {
             const assignedUser = schedule[key];
-            if (assignedUser && assignedUser !== "Unassigned" && counts.hasOwnProperty(assignedUser)) {
+            if (assignedUser && !isUnassigned(assignedUser) && counts.hasOwnProperty(assignedUser)) {
                 counts[assignedUser]++;
             }
         }
@@ -782,11 +814,19 @@ function renderDutyCounts() {
         const count = counts[u.name];
         const isAtLimit = count >= u.limit;
 
-        row.innerHTML = `
-            <td>${u.name}</td>
-            <td style="${isAtLimit ? 'color: var(--danger-color); font-weight: bold;' : ''}">${count}</td>
-            <td>${u.limit}</td>
-        `;
+        const nameTd = document.createElement('td');
+        nameTd.textContent = u.name;
+
+        const countTd = document.createElement('td');
+        countTd.textContent = count;
+        if (isAtLimit) countTd.style.cssText = 'color: var(--danger-main); font-weight: bold;';
+
+        const limitTd = document.createElement('td');
+        limitTd.textContent = u.limit;
+
+        row.appendChild(nameTd);
+        row.appendChild(countTd);
+        row.appendChild(limitTd);
         dutyCountsTableBody.appendChild(row);
     });
 }
@@ -827,7 +867,7 @@ function renderYearlyDutyCounts() {
             processedSlots.add(uniqueKey);
 
             let assignedUser = schedule[key];
-            if (assignedUser && assignedUser !== "Unassigned") {
+            if (assignedUser && !isUnassigned(assignedUser)) {
                 // Ensure robustness
                 assignedUser = String(assignedUser).trim();
 
@@ -861,10 +901,16 @@ function renderYearlyDutyCounts() {
 
         if (!hasData) tooltipText += "本年度尚未被分配排班。";
 
-        row.innerHTML = `
-            <td>${u.name}</td>
-            <td title="${tooltipText}" style="cursor: help; text-decoration: underline dotted; text-underline-offset: 4px;">${counts[u.name]}</td>
-        `;
+        const nameTd = document.createElement('td');
+        nameTd.textContent = u.name;
+
+        const countTd = document.createElement('td');
+        countTd.textContent = counts[u.name];
+        countTd.title = tooltipText; // .title is plain text — safe against markup in names
+        countTd.style.cssText = 'cursor: help; text-decoration: underline dotted; text-underline-offset: 4px;';
+
+        row.appendChild(nameTd);
+        row.appendChild(countTd);
         yearlyDutyCountsTableBody.appendChild(row);
     });
 }
