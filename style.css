@@ -65,6 +65,13 @@ header {
     align-items: center;
 }
 
+.header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    align-items: center;
+}
+
 h1 {
     font-size: 1.5rem;
     font-weight: 600;
@@ -568,25 +575,67 @@ button {
 
 /* Responsive */
 @media (max-width: 900px) {
+    /* Switch from the fixed-height "app" layout to a normally scrolling page. */
+    body {
+        height: auto;
+        min-height: 100vh;
+    }
+
+    header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        padding: 1rem;
+    }
+
+    h1 {
+        font-size: 1.25rem;
+    }
+
     .container {
         flex-direction: column;
         padding: 1rem;
+        overflow: visible;
     }
 
     .calendar-section,
     .controls-section {
         flex: auto;
         width: 100%;
+        padding: 1.25rem;
+        overflow: visible;
     }
 
+    .controls-section {
+        min-width: 0;
+        /* override the 320px desktop min-width so it never overflows narrow phones */
+    }
+
+    /* The clinic runs only on Wednesdays, so on small screens drop the 7-column
+       month grid and stack each Wednesday as a full-width card. */
     .calendar-grid {
-        grid-template-columns: repeat(7, minmax(40px, 1fr));
-        gap: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
     }
 
-    .calendar-cell {
-        min-height: 100px;
-        padding: 0.4rem;
+    .calendar-cell:not(.wednesday) {
+        display: none;
+        /* hides the weekday header row, leading blanks and non-clinic days */
+    }
+
+    .calendar-cell.wednesday {
+        min-height: auto;
+        padding: 1rem;
+    }
+
+    .day-number {
+        font-size: 1.1rem;
+    }
+
+    .schedule-slot {
+        font-size: 0.95rem;
+        padding: 0.6rem 0.8rem;
     }
 }
 
