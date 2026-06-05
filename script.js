@@ -312,6 +312,27 @@ function renderCalendar() {
 async function toggleHoliday(dateStr, isChecked) {
     if (isChecked) {
         if (!holidays.includes(dateStr)) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+
+            // 防呆：若當天已經有排班，設為假日會清除這些班，先列出來確認
+            const amUser = schedule[`${dateStr}_AM`];
+            const pmUser = schedule[`${dateStr}_PM`];
+            const assigned = [];
+            if (amUser && amUser !== "未安排" && amUser !== "Unassigned") assigned.push(`　上午：${amUser}`);
+            if (pmUser && pmUser !== "未安排" && pmUser !== "Unassigned") assigned.push(`　下午：${pmUser}`);
+
+            let confirmMsg;
+            if (assigned.length > 0) {
+                confirmMsg = `⚠️ ${y}年${m}月${d}日 這天已經有排班：\n${assigned.join('\n')}\n\n設為假日（停診）將會「清除」以上排班，且無法復原。\n\n確定要繼續嗎？`;
+            } else {
+                confirmMsg = `確定要將 ${y}年${m}月${d}日 設為假日（停診）嗎？\n\n設為假日後，這天將不會排任何人。`;
+            }
+
+            if (!confirm(confirmMsg)) {
+                renderCalendar(); // 使用者取消，還原勾選狀態
+                return;
+            }
+
             holidays.push(dateStr);
             await postData('addHoliday', { date: dateStr });
 
