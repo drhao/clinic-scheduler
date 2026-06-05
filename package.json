@@ -1,0 +1,9 @@
+{
+  "name": "clinic-scheduler",
+  "version": "1.0.0",
+  "description": "MO Travel Clinic Scheduler — serverless duty rostering (static frontend + Google Apps Script)",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}
