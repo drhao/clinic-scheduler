@@ -646,9 +646,12 @@ async function generateSchedule() {
         if (dateObj.getDay() === 3) { // Wednesday
             const dateStr = formatDate(dateObj);
 
+            // Clear any previous assignment for this day first, so the
+            // same-day check below evaluates against this run's results only.
+            delete schedule[`${dateStr}_AM`];
+            delete schedule[`${dateStr}_PM`];
+
             if (holidays.includes(dateStr)) {
-                delete schedule[`${dateStr}_AM`];
-                delete schedule[`${dateStr}_PM`];
                 continue;
             }
 
@@ -800,6 +803,10 @@ function assignNextAvailable(dateStr, slot, queue, monthlyCounts) {
             c.user === user.name && c.date === dateStr && c.slot === slot
         );
         if (isUnavailable) continue;
+
+        // Check Same-Day: avoid assigning the same person to both AM and PM on the same day
+        const otherSlot = slot === 'AM' ? 'PM' : 'AM';
+        if (schedule[`${dateStr}_${otherSlot}`] === user.name) continue;
 
         // Found available user
         assignedUser = user;

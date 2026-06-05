@@ -30,7 +30,9 @@ The fairness/round-robin assignment logic exists **twice**:
 - `script.js` → `generateSchedule()` + `assignNextAvailable()` (manual "一鍵排班" button)
 - `google_apps_script.js` → `autoGenerateSchedule()` (cron, runs on the 5th for *next* month)
 
-Both implement the same algorithm: seed a queue sorted by **this-year duty count ascending** (excluding the target month) then name; for each Wednesday AM/PM, pick the first queued user who is under their monthly `limit` and has no matching `Constraints` row, assign them, then move them to the back of the queue (round-robin). Holidays clear that day's slots. **Any change to scheduling rules must be applied to both functions**, or the manual and automatic schedules will diverge.
+Both implement the same algorithm: seed a queue sorted by **this-year duty count ascending** (excluding the target month) then name; for each Wednesday AM/PM, pick the first queued user who (a) is under their monthly `limit`, (b) has no matching `Constraints` row, and (c) is not already assigned to the other slot of the same day, assign them, then move them to the back of the queue (round-robin). Each Wednesday's two slots are cleared before assigning so the same-day check sees only this run's results. A slot with no eligible user is written as `"未安排"`. **Any change to scheduling rules must be applied to both functions**, or the manual and automatic schedules will diverge.
+
+`limit` is a hard cap — the algorithm never relaxes it to fill a slot. When a notification email is sent (manual `sendReminders` action with `isScheduled`, or `autoGenerateSchedule`), `getUnassignedSlots`/`formatUnassignedNote` append a list of any `"未安排"` slots so staff can arrange cover.
 
 ### Automation (cron)
 
