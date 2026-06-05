@@ -99,6 +99,16 @@ function doPost(e) {
     }
 
     const action = data.action;
+
+    // Optional shared-password gate for write actions. Set a password once by
+    // running setApiToken() in the editor; until then, writes stay open (so
+    // existing deployments are unaffected). The password protects against
+    // anyone with the public Web App URL wiping data or spamming emails.
+    const expectedToken = PropertiesService.getScriptProperties().getProperty('API_TOKEN');
+    if (expectedToken && data.token !== expectedToken) {
+        return errorResponse("未授權：管理密碼錯誤");
+    }
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
     const lock = LockService.getScriptLock();
@@ -115,6 +125,16 @@ function doPost(e) {
             for (let i = values.length - 1; i >= 0; i--) {
                 if (values[i][0] === data.name) {
                     sheet.deleteRow(i + 1);
+                }
+            }
+
+            // Release this user's duties so the slots show as unassigned
+            // rather than referencing a doctor who no longer exists.
+            const scheduleSheet = ss.getSheetByName('Schedule');
+            const scheduleValues = scheduleSheet.getDataRange().getValues();
+            for (let i = 0; i < scheduleValues.length; i++) {
+                if (scheduleValues[i][1] === data.name) { // Column 2 (index 1) is Assigned User
+                    scheduleSheet.getRange(i + 1, 2).setValue("未安排");
                 }
             }
 
@@ -217,8 +237,18 @@ function doPost(e) {
             let body = "";
 
             if (isScheduled) {
+                // Read the current schedule to flag any slot that could not be filled.
+                const scheduleSheet = ss.getSheetByName('Schedule');
+                const scheduleData = scheduleSheet.getDataRange().getValues();
+                const scheduleMap = {};
+                let startRowSch = (scheduleData.length > 0 && scheduleData[0][0] === "Key") ? 1 : 0;
+                for (let i = startRowSch; i < scheduleData.length; i++) {
+                    if (scheduleData[i][0]) scheduleMap[scheduleData[i][0]] = scheduleData[i][1];
+                }
+                const unassignedNote = formatUnassignedNote(getUnassignedSlots(scheduleMap, targetYear, targetMonth - 1));
+
                 subject = `[通知] MO旅醫門診 ${targetYear}年${targetMonth}月 班表已排定`;
-                body = `大家好，\n\n${targetYear}年${targetMonth}月 的旅醫門診班表已經排定。\n請至排班網頁確認您的班表，並可以點擊班表上的「行事曆圖示」將門診時段加入您的個人 Google Calendar 中。\n\n排班網頁：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
+                body = `大家好，\n\n${targetYear}年${targetMonth}月 的旅醫門診班表已經排定。\n請至排班網頁確認您的班表，並可以點擊班表上的「行事曆圖示」將門診時段加入您的個人 Google Calendar 中。${unassignedNote}\n\n排班網頁：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
             } else {
                 let deadlineMonth = targetMonth - 1;
                 if (deadlineMonth === 0) {
@@ -271,6 +301,58 @@ function formatDate(date) {
     } catch (e) {
         return String(date);
     }
+}
+
+/**
+ * Scans a schedule map for slots left "未安排" in the given year/month.
+ * @param {Object} scheduleMap  Map of "YYYY-MM-DD_AM|PM" -> assigned user name.
+ * @param {number} year         Four-digit year.
+ * @param {number} monthIdx     Month index (0 = January, 11 = December).
+ * @return {Array<{m:number, d:number, slot:string}>} sorted by day then AM before PM.
+ */
+function getUnassignedSlots(scheduleMap, year, monthIdx) {
+    const unassigned = [];
+    Object.keys(scheduleMap).forEach(key => {
+        const [dateStr, slot] = key.split('_');
+        const [y, m, d] = dateStr.split('-').map(Number);
+        if (y === year && (m - 1) === monthIdx && scheduleMap[key] === "未安排") {
+            unassigned.push({ m, d, slot });
+        }
+    });
+    unassigned.sort((a, b) => (a.d - b.d) || (a.slot === 'AM' ? -1 : 1));
+    return unassigned;
+}
+
+/**
+ * Builds a human-readable warning block listing unassigned slots for an email
+ * body. Returns an empty string when every slot was filled.
+ */
+function formatUnassignedNote(unassigned) {
+    if (!unassigned || unassigned.length === 0) return "";
+    let note = "\n\n⚠️ 注意：以下時段目前無人可排（所有人皆已達當月上限或已畫休），請大家自行協調補班：\n";
+    unassigned.forEach(u => {
+        const slotName = u.slot === 'AM' ? '上午' : '下午';
+        note += `・${u.m}月${u.d}日 (${slotName})\n`;
+    });
+    return note;
+}
+
+/**
+ * Sets the shared admin password that the frontend must send for write
+ * actions. Edit the password below, run this ONCE from the editor, then
+ * delete the password from this file (it lives in Script Properties after).
+ * To disable the gate again, run clearApiToken().
+ */
+function setApiToken() {
+    const PASSWORD = 'CHANGE_ME'; // <-- change to your chosen admin password
+    PropertiesService.getScriptProperties().setProperty('API_TOKEN', PASSWORD);
+    Logger.log('API_TOKEN has been set. Remember to remove the password from setApiToken().');
+}
+
+/** Removes the admin password, reopening write actions to anyone. */
+function clearApiToken() {
+    PropertiesService.getScriptProperties().deleteProperty('API_TOKEN');
+    Logger.log('API_TOKEN cleared. Write actions are now open.');
 }
 
 function setup() {
@@ -515,10 +597,14 @@ function autoGenerateSchedule() {
 
                 if (monthlyCounts[user.name] >= user.limit) continue;
 
-                const isUnavailable = constraints.some(c => 
+                const isUnavailable = constraints.some(c =>
                     c.user === user.name && c.date === dateStr && c.slot === slot
                 );
                 if (isUnavailable) continue;
+
+                // Same-Day: avoid assigning the same person to both AM and PM on the same day
+                const otherSlot = slot === 'AM' ? 'PM' : 'AM';
+                if (scheduleMap[`${dateStr}_${otherSlot}`] === user.name) continue;
 
                 // Found
                 assignedUser = user;
@@ -542,9 +628,12 @@ function autoGenerateSchedule() {
             if (dateObj.getDay() === 3) { // Wednesday
                 const dateStr = formatDate(dateObj);
 
+                // Clear any previous assignment for this day first, so the
+                // same-day check evaluates against this run's results only.
+                delete scheduleMap[`${dateStr}_AM`];
+                delete scheduleMap[`${dateStr}_PM`];
+
                 if (holidays.includes(dateStr)) {
-                    delete scheduleMap[`${dateStr}_AM`];
-                    delete scheduleMap[`${dateStr}_PM`];
                     continue;
                 }
 
@@ -567,8 +656,9 @@ function autoGenerateSchedule() {
         Logger.log(`Successfully generated schedule for ${targetYear}-${targetMonthDisplay}.`);
 
         // 6. Send Notifications
+        const unassignedNote = formatUnassignedNote(getUnassignedSlots(scheduleMap, targetYear, targetMonthIdx));
         const subject = `[通知] MO旅醫門診 ${targetYear}年${targetMonthDisplay}月 班表已自動排定`;
-        const body = `大家好，\n\n系統已於今日自動完成 ${targetYear}年${targetMonthDisplay}月 的旅醫門診自動排班作業。\n請至排班網頁確認您的班表，並可以點擊班表上的「行事曆圖示」將門診時段加入您的個人 Google Calendar 中。\n(若需臨時異動，請自行協商換班)\n\n排班網頁：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統自動派發\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
+        const body = `大家好，\n\n系統已於今日自動完成 ${targetYear}年${targetMonthDisplay}月 的旅醫門診自動排班作業。\n請至排班網頁確認您的班表，並可以點擊班表上的「行事曆圖示」將門診時段加入您的個人 Google Calendar 中。\n(若需臨時異動，請自行協商換班)${unassignedNote}\n\n排班網頁：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統自動派發\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
 
         for (let i = startRowUsers; i < usersData.length; i++) {
             const email = usersData[i][2];

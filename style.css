@@ -10,6 +10,8 @@
     --primary-main: #3182ce;
     --primary-hover: #2b6cb0;
     --primary-light: #ebf8ff;
+    --primary-pastel: #bee3f8;
+    /* Medium-light blue used for focus rings, section underlines and the modal header */
 
     /* Secondary Actions (Teal/Green) */
     --secondary-main: #38b2ac;
@@ -27,6 +29,8 @@
 
     --btn-text-light: #ffffff;
     --btn-text-dark: #2d3748;
+    --btn-text: #2d3748;
+    /* Default dark button/heading text (e.g. modal header on light background) */
 
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -282,6 +286,14 @@ button {
     color: #6a1b9a;
 }
 
+/* Unassigned slot - Red, so unfilled duties stand out at a glance.
+   Declared after the AM/PM rules above so it wins on equal specificity. */
+.schedule-slot.unassigned {
+    background-color: var(--danger-light);
+    color: var(--danger-hover);
+    font-weight: 600;
+}
+
 .schedule-slot strong {
     font-weight: 600;
     margin-right: 0.5rem;
@@ -434,6 +446,19 @@ button {
     outline: none;
     border-color: var(--primary-pastel);
     background-color: #fff;
+}
+
+/* Edit-user modal: match the standard full-width field styling */
+#edit-user-modal input {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 1.2rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: #fcfcfc;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    transition: border-color 0.2s;
 }
 
 .checkbox-group {

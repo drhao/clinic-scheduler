@@ -148,6 +148,34 @@
         </div>
     </div>
 
+    <!-- Edit User Modal -->
+    <div id="edit-user-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header">
+                <h2>✏️ 編輯人員</h2>
+                <button id="close-edit-user-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group" style="margin-bottom: 0;">
+                    <label for="edit-user-name">姓名：</label>
+                    <input type="text" id="edit-user-name" placeholder="姓名">
+
+                    <label for="edit-user-limit">每月排班上限：</label>
+                    <input type="number" id="edit-user-limit" min="1" placeholder="上限">
+
+                    <label for="edit-user-email">Email 信箱（選填）：</label>
+                    <input type="email" id="edit-user-email" placeholder="Email信箱">
+
+                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem;">
+                        <button id="cancel-edit-user-btn" class="secondary-btn">取消</button>
+                        <button id="save-edit-user-btn" class="action-btn">儲存</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="scheduler.js"></script>
     <script src="script.js"></script>
 </body>
 

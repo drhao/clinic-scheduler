@@ -20,6 +20,13 @@ let schedule = {};
 let holidays = []; // Array of date strings "YYYY-MM-DD"
 let isLoading = false;
 
+// Sentinel written into the schedule when no eligible doctor could be found.
+// "Unassigned" is the legacy English value; accept both when reading.
+const UNASSIGNED = "未安排";
+function isUnassigned(name) {
+    return name === UNASSIGNED || name === "Unassigned";
+}
+
 // DOM Elements
 const calendarGrid = document.getElementById('calendar-grid');
 const currentMonthLabel = document.getElementById('current-month-label');
@@ -79,9 +86,21 @@ function init() {
         });
     }
 
+    // Edit-user modal
+    const editUserModal = document.getElementById('edit-user-modal');
+    const saveEditUserBtn = document.getElementById('save-edit-user-btn');
+    const cancelEditUserBtn = document.getElementById('cancel-edit-user-btn');
+    const closeEditUserBtn = document.getElementById('close-edit-user-btn');
+    if (saveEditUserBtn) saveEditUserBtn.addEventListener('click', saveEditUser);
+    if (cancelEditUserBtn) cancelEditUserBtn.addEventListener('click', closeEditUserModal);
+    if (closeEditUserBtn) closeEditUserBtn.addEventListener('click', closeEditUserModal);
+
     window.addEventListener('click', (e) => {
         if (guideModal && e.target === guideModal) {
             guideModal.style.display = 'none';
+        }
+        if (editUserModal && e.target === editUserModal) {
+            closeEditUserModal();
         }
     });
 }
@@ -151,15 +170,31 @@ async function fetchData() {
     }
 }
 
+// Admin password for write actions. Stored only in this browser's
+// localStorage (never committed), prompted for once on the first write.
+// The backend ignores it unless a matching API_TOKEN has been configured.
+function getAuthToken() {
+    let token = localStorage.getItem('clinicAdminToken');
+    if (!token) {
+        token = (prompt("請輸入管理密碼（僅排班負責人需要，會記在這台裝置）：") || "").trim();
+        if (token) localStorage.setItem('clinicAdminToken', token);
+    }
+    return token;
+}
+
 async function postData(action, payload) {
     setLoading(true);
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
-            body: JSON.stringify({ action, ...payload })
+            body: JSON.stringify({ action, token: getAuthToken(), ...payload })
         });
         const result = await response.json();
         if (result.status !== 'success') {
+            // Wrong/expired password: forget it so the user is re-prompted next time.
+            if (result.message && result.message.indexOf('未授權') !== -1) {
+                localStorage.removeItem('clinicAdminToken');
+            }
             alert("Error saving data: " + result.message);
             return false;
         }
@@ -179,6 +214,25 @@ function setLoading(loading) {
     generateBtn.disabled = loading;
     addConstraintBtn.disabled = loading;
     addUserBtn.disabled = loading;
+}
+
+// Optimistic-update safety net: snapshot state before a local mutation, and
+// restore it if the backend sync fails so the UI never silently diverges.
+function snapshotState() {
+    return {
+        users: JSON.parse(JSON.stringify(users)),
+        constraints: JSON.parse(JSON.stringify(constraints)),
+        schedule: JSON.parse(JSON.stringify(schedule)),
+        holidays: JSON.parse(JSON.stringify(holidays))
+    };
+}
+
+function restoreState(snap) {
+    users = snap.users;
+    constraints = snap.constraints;
+    schedule = snap.schedule;
+    holidays = snap.holidays;
+    renderAll();
 }
 
 function renderAll() {
@@ -284,24 +338,8 @@ function renderCalendar() {
                 const amUser = schedule[amKey] || '-';
                 const pmUser = schedule[pmKey] || '-';
 
-                const amSlot = document.createElement('div');
-                amSlot.className = 'schedule-slot';
-                amSlot.innerHTML = `<div><strong>AM</strong> ${amUser}</div>`;
-                if (amUser !== '-' && amUser !== 'Unassigned') {
-                    const gcalLink = createGCalLink(amUser, dateStr, 'AM');
-                    amSlot.appendChild(gcalLink);
-                }
-
-                const pmSlot = document.createElement('div');
-                pmSlot.className = 'schedule-slot';
-                pmSlot.innerHTML = `<div><strong>PM</strong> ${pmUser}</div>`;
-                if (pmUser !== '-' && pmUser !== 'Unassigned') {
-                    const gcalLink = createGCalLink(pmUser, dateStr, 'PM');
-                    pmSlot.appendChild(gcalLink);
-                }
-
-                cell.appendChild(amSlot);
-                cell.appendChild(pmSlot);
+                cell.appendChild(buildScheduleSlot('AM', amUser, dateStr));
+                cell.appendChild(buildScheduleSlot('PM', pmUser, dateStr));
             }
         }
 
@@ -312,24 +350,70 @@ function renderCalendar() {
 async function toggleHoliday(dateStr, isChecked) {
     if (isChecked) {
         if (!holidays.includes(dateStr)) {
-            holidays.push(dateStr);
-            await postData('addHoliday', { date: dateStr });
+            const [y, m, d] = dateStr.split('-').map(Number);
 
+            // 防呆：若當天已經有排班，設為假日會清除這些班，先列出來確認
+            const amUser = schedule[`${dateStr}_AM`];
+            const pmUser = schedule[`${dateStr}_PM`];
+            const assigned = [];
+            if (amUser && !isUnassigned(amUser)) assigned.push(`　上午：${amUser}`);
+            if (pmUser && !isUnassigned(pmUser)) assigned.push(`　下午：${pmUser}`);
+
+            let confirmMsg;
+            if (assigned.length > 0) {
+                confirmMsg = `⚠️ ${y}年${m}月${d}日 這天已經有排班：\n${assigned.join('\n')}\n\n設為假日（停診）將會「清除」以上排班，且無法復原。\n\n確定要繼續嗎？`;
+            } else {
+                confirmMsg = `確定要將 ${y}年${m}月${d}日 設為假日（停診）嗎？\n\n設為假日後，這天將不會排任何人。`;
+            }
+
+            if (!confirm(confirmMsg)) {
+                renderCalendar(); // 使用者取消，還原勾選狀態
+                return;
+            }
+
+            const snap = snapshotState();
+            holidays.push(dateStr);
             // Clear schedule for this date if it exists
             delete schedule[`${dateStr}_AM`];
             delete schedule[`${dateStr}_PM`];
-            await postData('saveSchedule', { schedule });
+
+            const ok = await postData('addHoliday', { date: dateStr });
+            if (!ok) { restoreState(snap); return; }
+            const ok2 = await postData('saveSchedule', { schedule });
+            if (!ok2) { restoreState(snap); return; }
         }
     } else {
         const idx = holidays.indexOf(dateStr);
         if (idx !== -1) {
+            const snap = snapshotState();
             holidays.splice(idx, 1);
-            await postData('removeHoliday', { date: dateStr });
+            const ok = await postData('removeHoliday', { date: dateStr });
+            if (!ok) { restoreState(snap); return; }
         }
     }
     renderCalendar();
     renderDutyCounts(); // Schedule might change (cleared slots)
     renderYearlyDutyCounts();
+}
+
+// Builds one AM/PM schedule cell. The doctor name is set via textContent
+// (never innerHTML) so a name can never inject markup.
+function buildScheduleSlot(slot, user, dateStr) {
+    const div = document.createElement('div');
+    div.className = 'schedule-slot';
+    if (isUnassigned(user)) div.classList.add('unassigned');
+
+    const inner = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.textContent = slot;
+    inner.appendChild(strong);
+    inner.appendChild(document.createTextNode(' ' + user));
+    div.appendChild(inner);
+
+    if (user !== '-' && !isUnassigned(user)) {
+        div.appendChild(createGCalLink(user, dateStr, slot));
+    }
+    return div;
 }
 
 // Google Calendar Helper
@@ -397,12 +481,17 @@ async function addConstraint() {
     }
 
     // Optimistic Update
+    const snap = snapshotState();
     constraints.push(...newConstraints);
     renderConstraints();
 
     // Sync with Backend
     for (const c of newConstraints) {
-        await postData('addConstraint', c);
+        const ok = await postData('addConstraint', c);
+        if (!ok) {
+            restoreState(snap);
+            return;
+        }
     }
 
     // Reset inputs
@@ -440,10 +529,17 @@ function renderConstraints() {
         const originalIndex = constraints.indexOf(c);
 
         const li = document.createElement('li');
-        li.innerHTML = `
-            <span>${c.user} – ${c.date} (${c.slot})</span>
-            <span class="delete-constraint" onclick="removeConstraint(${originalIndex})">×</span>
-        `;
+
+        const label = document.createElement('span');
+        label.textContent = `${c.user} – ${c.date} (${c.slot})`;
+
+        const del = document.createElement('span');
+        del.className = 'delete-constraint';
+        del.textContent = '×';
+        del.addEventListener('click', () => removeConstraint(originalIndex));
+
+        li.appendChild(label);
+        li.appendChild(del);
         constraintsUl.appendChild(li);
     });
 }
@@ -452,11 +548,13 @@ window.removeConstraint = async function (index) {
     const c = constraints[index];
 
     // Optimistic Update
+    const snap = snapshotState();
     constraints.splice(index, 1);
     renderConstraints();
 
     // Sync
-    await postData('removeConstraint', { user: c.user, date: c.date, slot: c.slot });
+    const ok = await postData('removeConstraint', { user: c.user, date: c.date, slot: c.slot });
+    if (!ok) restoreState(snap);
 }
 
 // User Management
@@ -465,16 +563,39 @@ function renderUserList() {
     users.forEach((user, index) => {
         const li = document.createElement('li');
         li.className = 'user-list-item';
-        li.innerHTML = `
-            <div style="display: flex; flex-direction: column; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 70%;">
-                <span id="user-name-${index}">${user.name} (Max: ${user.limit})</span>
-                <span style="font-size: 0.75rem; color: var(--text-light);">${user.email || '尚未設定 Email'}</span>
-            </div>
-            <div class="user-actions">
-                <button class="edit-user-btn" onclick="editUser(${index})">編輯</button>
-                <button class="delete-user-btn" onclick="deleteUser(${index})">刪除</button>
-            </div>
-        `;
+
+        const info = document.createElement('div');
+        info.style.cssText = 'display: flex; flex-direction: column; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 70%;';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.id = `user-name-${index}`;
+        nameSpan.textContent = `${user.name} (Max: ${user.limit})`;
+
+        const emailSpan = document.createElement('span');
+        emailSpan.style.cssText = 'font-size: 0.75rem; color: var(--text-light);';
+        emailSpan.textContent = user.email || '尚未設定 Email';
+
+        info.appendChild(nameSpan);
+        info.appendChild(emailSpan);
+
+        const actions = document.createElement('div');
+        actions.className = 'user-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'edit-user-btn';
+        editBtn.textContent = '編輯';
+        editBtn.addEventListener('click', () => editUser(index));
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-user-btn';
+        deleteBtn.textContent = '刪除';
+        deleteBtn.addEventListener('click', () => deleteUser(index));
+
+        actions.appendChild(editBtn);
+        actions.appendChild(deleteBtn);
+
+        li.appendChild(info);
+        li.appendChild(actions);
         userListUl.appendChild(li);
     });
 }
@@ -505,71 +626,43 @@ async function addUser() {
     }
 
     // Optimistic
+    const snap = snapshotState();
     users.push({ name, limit, email });
-    newUserNameInput.value = '';
-    if (newUserEmailInput) newUserEmailInput.value = '';
-    newUserLimitInput.value = '4';
     renderUserList();
     updateUserSelect();
     renderDutyCounts();
     renderYearlyDutyCounts();
 
     // Sync
-    await postData('addUser', { name, limit, email });
+    const ok = await postData('addUser', { name, limit, email });
+    if (!ok) {
+        restoreState(snap);
+        return;
+    }
+
+    // Clear inputs only once the add is confirmed
+    newUserNameInput.value = '';
+    if (newUserEmailInput) newUserEmailInput.value = '';
+    newUserLimitInput.value = '4';
 }
 
 window.deleteUser = async function (index) {
     const userToDelete = users[index].name;
-    if (confirm(`確定要刪除「${userToDelete}」嗎？這將會一併移除他在系統中所有設定好的不排班時間。`)) {
+    if (confirm(`確定要刪除「${userToDelete}」嗎？這將會一併移除他在系統中所有設定好的不排班時間，已排定的班則會變成「未安排」。`)) {
         // Optimistic
+        const snap = snapshotState();
         users.splice(index, 1);
         constraints = constraints.filter(c => c.user !== userToDelete);
 
-        renderUserList();
-        updateUserSelect();
-        renderConstraints();
-        renderDutyCounts();
-        renderYearlyDutyCounts();
-
-        // Sync
-        await postData('deleteUser', { name: userToDelete });
-    }
-}
-
-window.editUser = async function (index) {
-    const oldUser = users[index];
-    const newName = prompt("請輸入新名稱：", oldUser.name);
-    if (newName === null) return; // Cancelled
-
-    // Trim the input immediately
-    const trimmedName = newName.trim();
-
-    const newLimitStr = prompt("請輸入新的每月排班上限：", oldUser.limit);
-    if (newLimitStr === null) return; // Cancelled
-
-    const newLimit = parseInt(newLimitStr, 10);
-
-    const newEmail = prompt("請輸入 Email 信箱 (選填)：", oldUser.email || "");
-    if (newEmail === null) return; // Cancelled
-
-    if (trimmedName && trimmedName !== "" && !isNaN(newLimit) && newLimit > 0) {
-        if (trimmedName !== oldUser.name && users.some(u => u.name === trimmedName)) {
-            alert("名稱已存在！");
-            return;
-        }
-
-        // Optimistic
-        const oldName = oldUser.name;
-        users[index] = { name: trimmedName, limit: newLimit, email: newEmail.trim() };
-
-        if (oldName !== trimmedName) {
-            constraints.forEach(c => {
-                if (c.user === oldName) c.user = trimmedName;
-            });
-            Object.keys(schedule).forEach(key => {
-                if (schedule[key] === oldName) schedule[key] = trimmedName;
-            });
-        }
+        // Release any duties this user was assigned to, marking them unassigned
+        // so they show up (in red) as needing cover rather than vanishing.
+        let scheduleChanged = false;
+        Object.keys(schedule).forEach(key => {
+            if (schedule[key] === userToDelete) {
+                schedule[key] = UNASSIGNED;
+                scheduleChanged = true;
+            }
+        });
 
         renderUserList();
         updateUserSelect();
@@ -579,17 +672,84 @@ window.editUser = async function (index) {
         renderYearlyDutyCounts();
 
         // Sync
-        await postData('editUser', { oldName, newName: trimmedName, newLimit, newEmail: newEmail.trim() });
-    } else {
-        alert("輸入無效，請檢查姓名與上限是否正確。");
+        const ok = await postData('deleteUser', { name: userToDelete });
+        if (!ok) {
+            restoreState(snap);
+            return;
+        }
+        if (scheduleChanged) {
+            const ok2 = await postData('saveSchedule', { schedule });
+            if (!ok2) restoreState(snap);
+        }
     }
 }
 
-// Scheduling Algorithm
+// Index of the user currently open in the edit modal (-1 = none).
+let editingUserIndex = -1;
+
+window.editUser = function (index) {
+    editingUserIndex = index;
+    const u = users[index];
+    document.getElementById('edit-user-name').value = u.name;
+    document.getElementById('edit-user-limit').value = u.limit;
+    document.getElementById('edit-user-email').value = u.email || '';
+    document.getElementById('edit-user-modal').style.display = 'flex';
+    document.getElementById('edit-user-name').focus();
+};
+
+function closeEditUserModal() {
+    document.getElementById('edit-user-modal').style.display = 'none';
+    editingUserIndex = -1;
+}
+
+async function saveEditUser() {
+    if (editingUserIndex < 0) return;
+    const index = editingUserIndex;
+    const oldUser = users[index];
+
+    const trimmedName = document.getElementById('edit-user-name').value.trim();
+    const newLimit = parseInt(document.getElementById('edit-user-limit').value, 10);
+    const newEmail = document.getElementById('edit-user-email').value.trim();
+
+    if (!trimmedName || isNaN(newLimit) || newLimit < 1) {
+        alert("輸入無效，請檢查姓名與每月上限。");
+        return;
+    }
+    if (trimmedName !== oldUser.name && users.some(u => u.name === trimmedName)) {
+        alert("名稱已存在！");
+        return;
+    }
+
+    const snap = snapshotState();
+    const oldName = oldUser.name;
+
+    // Optimistic update
+    users[index] = { name: trimmedName, limit: newLimit, email: newEmail };
+    if (oldName !== trimmedName) {
+        constraints.forEach(c => {
+            if (c.user === oldName) c.user = trimmedName;
+        });
+        Object.keys(schedule).forEach(key => {
+            if (schedule[key] === oldName) schedule[key] = trimmedName;
+        });
+    }
+
+    renderUserList();
+    updateUserSelect();
+    renderConstraints();
+    renderCalendar();
+    renderDutyCounts();
+    renderYearlyDutyCounts();
+    closeEditUserModal();
+
+    const ok = await postData('editUser', { oldName, newName: trimmedName, newLimit, newEmail });
+    if (!ok) restoreState(snap);
+}
+
+// Scheduling Algorithm — delegates to the shared, unit-tested scheduler.js
 async function generateSchedule() {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
-    const lastDay = new Date(year, month + 1, 0).getDate();
 
     // Check if the current month already has scheduled duties
     let hasExistingDuties = false;
@@ -597,8 +757,7 @@ async function generateSchedule() {
         const [dateStr, _] = key.split('_');
         const [y, m, d] = dateStr.split('-').map(Number);
         if (y === year && (m - 1) === month) {
-            const assignedUser = schedule[key];
-            if (assignedUser && assignedUser !== "Unassigned") {
+            if (!isUnassigned(schedule[key]) && schedule[key]) {
                 hasExistingDuties = true;
             }
         }
@@ -610,59 +769,18 @@ async function generateSchedule() {
         }
     }
 
-    // 1. Calculate yearly counts for initial queue sorting (Fairness Seed)
-    const yearlyCounts = {};
-    users.forEach(u => yearlyCounts[u.name] = 0);
-
-    // Count duties for current year, EXCLUDING the current target month
-    // (We want to base fairness on past performance, unaffected by current run)
-    Object.keys(schedule).forEach(key => {
-        const [dateStr, _] = key.split('_');
-        const [y, m, d] = dateStr.split('-').map(Number);
-
-        if (y === year && (m - 1) !== month) {
-            const assignedUser = schedule[key];
-            if (assignedUser && assignedUser !== "Unassigned" && yearlyCounts.hasOwnProperty(assignedUser)) {
-                yearlyCounts[assignedUser]++;
-            }
-        }
+    const snap = snapshotState();
+    schedule = Scheduler.generateMonthSchedule({
+        year, month, users, constraints, holidays, existingSchedule: schedule
     });
-
-    // 2. Initialize Queue
-    // Sort logic: Primary = Yearly Count (ASC), Secondary = Name (ASC)
-    let queue = [...users].sort((a, b) => {
-        const countA = yearlyCounts[a.name] || 0;
-        const countB = yearlyCounts[b.name] || 0;
-        if (countA !== countB) return countA - countB;
-        return a.name.localeCompare(b.name);
-    });
-
-    const shiftCounts = {};
-    users.forEach(u => shiftCounts[u.name] = 0);
-
-    // 3. Iterate Slots
-    for (let d = 1; d <= lastDay; d++) {
-        const dateObj = new Date(year, month, d);
-        if (dateObj.getDay() === 3) { // Wednesday
-            const dateStr = formatDate(dateObj);
-
-            if (holidays.includes(dateStr)) {
-                delete schedule[`${dateStr}_AM`];
-                delete schedule[`${dateStr}_PM`];
-                continue;
-            }
-
-            assignNextAvailable(dateStr, 'AM', queue, shiftCounts);
-            assignNextAvailable(dateStr, 'PM', queue, shiftCounts);
-        }
-    }
 
     renderCalendar();
     renderDutyCounts();
     renderYearlyDutyCounts();
 
-    // Sync Schedule
-    await postData('saveSchedule', { schedule });
+    // Sync Schedule (roll back the UI if the save fails)
+    const ok = await postData('saveSchedule', { schedule });
+    if (!ok) restoreState(snap);
 }
 
 function renderDutyCounts() {
@@ -684,7 +802,7 @@ function renderDutyCounts() {
 
         if (y === year && (m - 1) === month) {
             const assignedUser = schedule[key];
-            if (assignedUser && assignedUser !== "Unassigned" && counts.hasOwnProperty(assignedUser)) {
+            if (assignedUser && !isUnassigned(assignedUser) && counts.hasOwnProperty(assignedUser)) {
                 counts[assignedUser]++;
             }
         }
@@ -696,11 +814,19 @@ function renderDutyCounts() {
         const count = counts[u.name];
         const isAtLimit = count >= u.limit;
 
-        row.innerHTML = `
-            <td>${u.name}</td>
-            <td style="${isAtLimit ? 'color: var(--danger-color); font-weight: bold;' : ''}">${count}</td>
-            <td>${u.limit}</td>
-        `;
+        const nameTd = document.createElement('td');
+        nameTd.textContent = u.name;
+
+        const countTd = document.createElement('td');
+        countTd.textContent = count;
+        if (isAtLimit) countTd.style.cssText = 'color: var(--danger-main); font-weight: bold;';
+
+        const limitTd = document.createElement('td');
+        limitTd.textContent = u.limit;
+
+        row.appendChild(nameTd);
+        row.appendChild(countTd);
+        row.appendChild(limitTd);
         dutyCountsTableBody.appendChild(row);
     });
 }
@@ -741,7 +867,7 @@ function renderYearlyDutyCounts() {
             processedSlots.add(uniqueKey);
 
             let assignedUser = schedule[key];
-            if (assignedUser && assignedUser !== "Unassigned") {
+            if (assignedUser && !isUnassigned(assignedUser)) {
                 // Ensure robustness
                 assignedUser = String(assignedUser).trim();
 
@@ -775,47 +901,18 @@ function renderYearlyDutyCounts() {
 
         if (!hasData) tooltipText += "本年度尚未被分配排班。";
 
-        row.innerHTML = `
-            <td>${u.name}</td>
-            <td title="${tooltipText}" style="cursor: help; text-decoration: underline dotted; text-underline-offset: 4px;">${counts[u.name]}</td>
-        `;
+        const nameTd = document.createElement('td');
+        nameTd.textContent = u.name;
+
+        const countTd = document.createElement('td');
+        countTd.textContent = counts[u.name];
+        countTd.title = tooltipText; // .title is plain text — safe against markup in names
+        countTd.style.cssText = 'cursor: help; text-decoration: underline dotted; text-underline-offset: 4px;';
+
+        row.appendChild(nameTd);
+        row.appendChild(countTd);
         yearlyDutyCountsTableBody.appendChild(row);
     });
-}
-
-function assignNextAvailable(dateStr, slot, queue, monthlyCounts) {
-    const key = `${dateStr}_${slot}`;
-    let assignedUser = null;
-    let foundIndex = -1;
-
-    // Find first available user in queue
-    for (let i = 0; i < queue.length; i++) {
-        const user = queue[i];
-
-        // Check Limit (Month)
-        if (monthlyCounts[user.name] >= user.limit) continue;
-
-        // Check Constraints
-        const isUnavailable = constraints.some(c =>
-            c.user === user.name && c.date === dateStr && c.slot === slot
-        );
-        if (isUnavailable) continue;
-
-        // Found available user
-        assignedUser = user;
-        foundIndex = i;
-        break;
-    }
-
-    if (assignedUser) {
-        schedule[key] = assignedUser.name;
-        monthlyCounts[assignedUser.name]++;
-
-        // Round Robin: Move to back of queue
-        queue.push(queue.splice(foundIndex, 1)[0]);
-    } else {
-        schedule[key] = "未安排";
-    }
 }
 
 function formatDate(date) {
@@ -849,12 +946,17 @@ async function clearScheduleForYear() {
     }
 
     // Remove locally
+    const snap = snapshotState();
     keysToRemove.forEach(k => delete schedule[k]);
 
     renderAll();
 
     // Sync (Overwrite schedule)
-    await postData('saveSchedule', { schedule });
+    const ok = await postData('saveSchedule', { schedule });
+    if (!ok) {
+        restoreState(snap);
+        return;
+    }
 
     alert(`成功清除了 ${keysToRemove.length} 筆位於 ${year} 年的排班資料。`);
 }
