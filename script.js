@@ -20,6 +20,13 @@ let schedule = {};
 let holidays = []; // Array of date strings "YYYY-MM-DD"
 let isLoading = false;
 
+// Sentinel written into the schedule when no eligible doctor could be found.
+// "Unassigned" is the legacy English value; accept both when reading.
+const UNASSIGNED = "未安排";
+function isUnassigned(name) {
+    return name === UNASSIGNED || name === "Unassigned";
+}
+
 // DOM Elements
 const calendarGrid = document.getElementById('calendar-grid');
 const currentMonthLabel = document.getElementById('current-month-label');
@@ -151,15 +158,31 @@ async function fetchData() {
     }
 }
 
+// Admin password for write actions. Stored only in this browser's
+// localStorage (never committed), prompted for once on the first write.
+// The backend ignores it unless a matching API_TOKEN has been configured.
+function getAuthToken() {
+    let token = localStorage.getItem('clinicAdminToken');
+    if (!token) {
+        token = (prompt("請輸入管理密碼（僅排班負責人需要，會記在這台裝置）：") || "").trim();
+        if (token) localStorage.setItem('clinicAdminToken', token);
+    }
+    return token;
+}
+
 async function postData(action, payload) {
     setLoading(true);
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
-            body: JSON.stringify({ action, ...payload })
+            body: JSON.stringify({ action, token: getAuthToken(), ...payload })
         });
         const result = await response.json();
         if (result.status !== 'success') {
+            // Wrong/expired password: forget it so the user is re-prompted next time.
+            if (result.message && result.message.indexOf('未授權') !== -1) {
+                localStorage.removeItem('clinicAdminToken');
+            }
             alert("Error saving data: " + result.message);
             return false;
         }
@@ -286,16 +309,18 @@ function renderCalendar() {
 
                 const amSlot = document.createElement('div');
                 amSlot.className = 'schedule-slot';
+                if (isUnassigned(amUser)) amSlot.classList.add('unassigned');
                 amSlot.innerHTML = `<div><strong>AM</strong> ${amUser}</div>`;
-                if (amUser !== '-' && amUser !== 'Unassigned') {
+                if (amUser !== '-' && !isUnassigned(amUser)) {
                     const gcalLink = createGCalLink(amUser, dateStr, 'AM');
                     amSlot.appendChild(gcalLink);
                 }
 
                 const pmSlot = document.createElement('div');
                 pmSlot.className = 'schedule-slot';
+                if (isUnassigned(pmUser)) pmSlot.classList.add('unassigned');
                 pmSlot.innerHTML = `<div><strong>PM</strong> ${pmUser}</div>`;
-                if (pmUser !== '-' && pmUser !== 'Unassigned') {
+                if (pmUser !== '-' && !isUnassigned(pmUser)) {
                     const gcalLink = createGCalLink(pmUser, dateStr, 'PM');
                     pmSlot.appendChild(gcalLink);
                 }
@@ -541,19 +566,31 @@ async function addUser() {
 
 window.deleteUser = async function (index) {
     const userToDelete = users[index].name;
-    if (confirm(`確定要刪除「${userToDelete}」嗎？這將會一併移除他在系統中所有設定好的不排班時間。`)) {
+    if (confirm(`確定要刪除「${userToDelete}」嗎？這將會一併移除他在系統中所有設定好的不排班時間，已排定的班則會變成「未安排」。`)) {
         // Optimistic
         users.splice(index, 1);
         constraints = constraints.filter(c => c.user !== userToDelete);
 
+        // Release any duties this user was assigned to, marking them unassigned
+        // so they show up (in red) as needing cover rather than vanishing.
+        let scheduleChanged = false;
+        Object.keys(schedule).forEach(key => {
+            if (schedule[key] === userToDelete) {
+                schedule[key] = UNASSIGNED;
+                scheduleChanged = true;
+            }
+        });
+
         renderUserList();
         updateUserSelect();
         renderConstraints();
+        renderCalendar();
         renderDutyCounts();
         renderYearlyDutyCounts();
 
         // Sync
         await postData('deleteUser', { name: userToDelete });
+        if (scheduleChanged) await postData('saveSchedule', { schedule });
     }
 }
 
@@ -842,7 +879,7 @@ function assignNextAvailable(dateStr, slot, queue, monthlyCounts) {
         // Round Robin: Move to back of queue
         queue.push(queue.splice(foundIndex, 1)[0]);
     } else {
-        schedule[key] = "未安排";
+        schedule[key] = UNASSIGNED;
     }
 }
 

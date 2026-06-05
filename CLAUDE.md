@@ -18,6 +18,8 @@ Three tiers, no server cost:
 
 Frontend ↔ backend coupling: `script.js` line ~13 holds `API_URL`, the deployed Web App URL. Changing the backend requires re-deploying the Apps Script and (if the URL changes) updating `API_URL`.
 
+Write auth (optional): `doPost` checks an `API_TOKEN` Script Property against `data.token`; if no token is configured the gate is open (back-compat). The frontend prompts for an admin password once, caches it in `localStorage` (`clinicAdminToken`), and sends it with every `postData`. Enable via `setApiToken()` in the editor; `doGet` (reads) remains public — protecting reads would require a Google-login deployment.
+
 ### Key data conventions
 
 - **Schedule is a flat map** keyed `"YYYY-MM-DD_AM"` / `"YYYY-MM-DD_PM"`, value = assigned user name. `saveSchedule` always clears and rewrites the entire `Schedule` sheet from the client's map — the client is the source of truth on save.

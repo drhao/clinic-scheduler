@@ -99,6 +99,16 @@ function doPost(e) {
     }
 
     const action = data.action;
+
+    // Optional shared-password gate for write actions. Set a password once by
+    // running setApiToken() in the editor; until then, writes stay open (so
+    // existing deployments are unaffected). The password protects against
+    // anyone with the public Web App URL wiping data or spamming emails.
+    const expectedToken = PropertiesService.getScriptProperties().getProperty('API_TOKEN');
+    if (expectedToken && data.token !== expectedToken) {
+        return errorResponse("未授權：管理密碼錯誤");
+    }
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
     const lock = LockService.getScriptLock();
@@ -115,6 +125,16 @@ function doPost(e) {
             for (let i = values.length - 1; i >= 0; i--) {
                 if (values[i][0] === data.name) {
                     sheet.deleteRow(i + 1);
+                }
+            }
+
+            // Release this user's duties so the slots show as unassigned
+            // rather than referencing a doctor who no longer exists.
+            const scheduleSheet = ss.getSheetByName('Schedule');
+            const scheduleValues = scheduleSheet.getDataRange().getValues();
+            for (let i = 0; i < scheduleValues.length; i++) {
+                if (scheduleValues[i][1] === data.name) { // Column 2 (index 1) is Assigned User
+                    scheduleSheet.getRange(i + 1, 2).setValue("未安排");
                 }
             }
 
@@ -315,6 +335,24 @@ function formatUnassignedNote(unassigned) {
         note += `・${u.m}月${u.d}日 (${slotName})\n`;
     });
     return note;
+}
+
+/**
+ * Sets the shared admin password that the frontend must send for write
+ * actions. Edit the password below, run this ONCE from the editor, then
+ * delete the password from this file (it lives in Script Properties after).
+ * To disable the gate again, run clearApiToken().
+ */
+function setApiToken() {
+    const PASSWORD = 'CHANGE_ME'; // <-- change to your chosen admin password
+    PropertiesService.getScriptProperties().setProperty('API_TOKEN', PASSWORD);
+    Logger.log('API_TOKEN has been set. Remember to remove the password from setApiToken().');
+}
+
+/** Removes the admin password, reopening write actions to anyone. */
+function clearApiToken() {
+    PropertiesService.getScriptProperties().deleteProperty('API_TOKEN');
+    Logger.log('API_TOKEN cleared. Write actions are now open.');
 }
 
 function setup() {
