@@ -194,9 +194,12 @@ function getAuthToken() {
     return token;
 }
 
-// Self-service actions that do NOT need the admin password: each doctor manages
-// their own 畫休. Everything else is admin-only and carries the token.
-const PUBLIC_ACTIONS = ['addConstraint', 'removeConstraint'];
+// Actions that do NOT need the admin password:
+//  - addConstraint/removeConstraint: each doctor manages their own 畫休
+//  - saveSchedule: 一鍵排班 / 手動指派換班 (also used by 清除整年, which the
+//    confirm dialog already guards). Admin-identity actions (user management,
+//    holidays, reminder emails) still require the token.
+const PUBLIC_ACTIONS = ['addConstraint', 'removeConstraint', 'saveSchedule'];
 
 async function postData(action, payload) {
     setLoading(true);
