@@ -100,16 +100,15 @@ function doPost(e) {
 
     const action = data.action;
 
-    // Optional shared-password gate for write actions. Set a password once by
-    // running setApiToken() in the editor; until then, writes stay open (so
-    // existing deployments are unaffected). The password protects against
-    // anyone with the public Web App URL wiping data or spamming emails.
-    // Constraints (畫休) are self-service, so they are exempt from the gate.
-    const PUBLIC_ACTIONS = ['addConstraint', 'removeConstraint'];
-    const expectedToken = PropertiesService.getScriptProperties().getProperty('API_TOKEN');
-    if (expectedToken && PUBLIC_ACTIONS.indexOf(action) === -1 && data.token !== expectedToken) {
-        return errorResponse("未授權：管理密碼錯誤");
-    }
+    // The shared-password gate is currently DISABLED — all write actions are
+    // open. To re-enable it, uncomment the block below (and restore
+    // getAuthToken()/PUBLIC_ACTIONS in script.js), then run setApiToken().
+    //
+    // const PUBLIC_ACTIONS = ['addConstraint', 'removeConstraint', 'saveSchedule'];
+    // const expectedToken = PropertiesService.getScriptProperties().getProperty('API_TOKEN');
+    // if (expectedToken && PUBLIC_ACTIONS.indexOf(action) === -1 && data.token !== expectedToken) {
+    //     return errorResponse("未授權：管理密碼錯誤");
+    // }
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 

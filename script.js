@@ -182,39 +182,20 @@ async function fetchData() {
     }
 }
 
-// Admin password for write actions. Stored only in this browser's
-// localStorage (never committed), prompted for once on the first write.
-// The backend ignores it unless a matching API_TOKEN has been configured.
-function getAuthToken() {
-    let token = localStorage.getItem('clinicAdminToken');
-    if (!token) {
-        token = (prompt("請輸入管理密碼（僅排班負責人需要，會記在這台裝置）：") || "").trim();
-        if (token) localStorage.setItem('clinicAdminToken', token);
-    }
-    return token;
-}
-
-// Self-service actions that do NOT need the admin password: each doctor manages
-// their own 畫休. Everything else is admin-only and carries the token.
-const PUBLIC_ACTIONS = ['addConstraint', 'removeConstraint'];
+// NOTE: The admin-password gate is currently DISABLED — no action requires a
+// password and none is prompted for or sent. To re-enable it, restore
+// getAuthToken()/PUBLIC_ACTIONS here and the token check in google_apps_script.js
+// doPost (see git history), then run setApiToken() in the Apps Script editor.
 
 async function postData(action, payload) {
     setLoading(true);
     try {
-        const body = { action, ...payload };
-        if (!PUBLIC_ACTIONS.includes(action)) {
-            body.token = getAuthToken();
-        }
         const response = await fetch(API_URL, {
             method: 'POST',
-            body: JSON.stringify(body)
+            body: JSON.stringify({ action, ...payload })
         });
         const result = await response.json();
         if (result.status !== 'success') {
-            // Wrong/expired password: forget it so the user is re-prompted next time.
-            if (result.message && result.message.indexOf('未授權') !== -1) {
-                localStorage.removeItem('clinicAdminToken');
-            }
             alert("Error saving data: " + result.message);
             return false;
         }
