@@ -18,7 +18,7 @@ Three tiers, no server cost:
 
 Frontend ↔ backend coupling: `script.js` line ~13 holds `API_URL`, the deployed Web App URL. Changing the backend requires re-deploying the Apps Script and (if the URL changes) updating `API_URL`.
 
-Write auth (optional): `doPost` checks an `API_TOKEN` Script Property against `data.token`; if no token is configured the gate is open (back-compat). The frontend prompts for an admin password once, caches it in `localStorage` (`clinicAdminToken`), and sends it with every `postData`. Enable via `setApiToken()` in the editor; `doGet` (reads) remains public — protecting reads would require a Google-login deployment.
+Write auth (optional): `doPost` checks an `API_TOKEN` Script Property against `data.token`; if no token is configured the gate is open (back-compat). The frontend prompts for an admin password once, caches it in `localStorage` (`clinicAdminToken`), and sends it with admin `postData` calls. `addConstraint`/`removeConstraint` are exempt (listed in `PUBLIC_ACTIONS` on both client and server) because 畫休 is self-service — keep the two lists in sync. Enable via `setApiToken()` in the editor; `doGet` (reads) remains public — protecting reads would require a Google-login deployment.
 
 ### Key data conventions
 

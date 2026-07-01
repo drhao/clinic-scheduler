@@ -104,8 +104,10 @@ function doPost(e) {
     // running setApiToken() in the editor; until then, writes stay open (so
     // existing deployments are unaffected). The password protects against
     // anyone with the public Web App URL wiping data or spamming emails.
+    // Constraints (畫休) are self-service, so they are exempt from the gate.
+    const PUBLIC_ACTIONS = ['addConstraint', 'removeConstraint'];
     const expectedToken = PropertiesService.getScriptProperties().getProperty('API_TOKEN');
-    if (expectedToken && data.token !== expectedToken) {
+    if (expectedToken && PUBLIC_ACTIONS.indexOf(action) === -1 && data.token !== expectedToken) {
         return errorResponse("未授權：管理密碼錯誤");
     }
 
