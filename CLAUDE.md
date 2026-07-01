@@ -18,7 +18,7 @@ Three tiers, no server cost:
 
 Frontend ↔ backend coupling: `script.js` line ~13 holds `API_URL`, the deployed Web App URL. Changing the backend requires re-deploying the Apps Script and (if the URL changes) updating `API_URL`.
 
-Write auth (optional): `doPost` checks an `API_TOKEN` Script Property against `data.token`; if no token is configured the gate is open (back-compat). The frontend prompts for an admin password once, caches it in `localStorage` (`clinicAdminToken`), and sends it with admin `postData` calls. `addConstraint`/`removeConstraint`/`saveSchedule` are exempt (listed in `PUBLIC_ACTIONS` on both client and server): 畫休 is self-service and `saveSchedule` backs 一鍵排班/手動指派/清除整年. Admin-identity actions (`addUser`/`deleteUser`/`editUser`/`addHoliday`/`removeHoliday`/`sendReminders`) stay gated. Keep the two `PUBLIC_ACTIONS` lists in sync. Enable via `setApiToken()` in the editor; `doGet` (reads) remains public — protecting reads would require a Google-login deployment.
+Write auth (currently DISABLED): a shared-password gate exists but is commented out — no action requires or sends a password. The mechanism (`getAuthToken`/`PUBLIC_ACTIONS` in `script.js`, the token check in `doPost`, and `setApiToken`/`clearApiToken`) is kept for easy re-enable; to turn it back on, restore the commented block in `doPost` and the token logic in `postData`, then run `setApiToken()`. `doGet` (reads) is public regardless. Enable via `setApiToken()` in the editor; `doGet` (reads) remains public — protecting reads would require a Google-login deployment.
 
 ### Key data conventions
 
