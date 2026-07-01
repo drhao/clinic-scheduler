@@ -194,12 +194,20 @@ function getAuthToken() {
     return token;
 }
 
+// Self-service actions that do NOT need the admin password: each doctor manages
+// their own 畫休. Everything else is admin-only and carries the token.
+const PUBLIC_ACTIONS = ['addConstraint', 'removeConstraint'];
+
 async function postData(action, payload) {
     setLoading(true);
     try {
+        const body = { action, ...payload };
+        if (!PUBLIC_ACTIONS.includes(action)) {
+            body.token = getAuthToken();
+        }
         const response = await fetch(API_URL, {
             method: 'POST',
-            body: JSON.stringify({ action, token: getAuthToken(), ...payload })
+            body: JSON.stringify(body)
         });
         const result = await response.json();
         if (result.status !== 'success') {
