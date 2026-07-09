@@ -1,0 +1,26 @@
+name: tests
+
+# Runs the unit tests (including tests/parity.test.js, which fails if the
+# SHARED SCHEDULER block in scheduler.js and google_apps_script.js diverge)
+# plus a syntax check on every JS file. No dependencies to install.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax check
+        run: |
+          node --check script.js
+          node --check scheduler.js
+          node --check google_apps_script.js
+      - name: Unit + parity tests
+        run: npm test

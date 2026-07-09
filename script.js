@@ -20,12 +20,11 @@ let schedule = {};
 let holidays = []; // Array of date strings "YYYY-MM-DD"
 let isLoading = false;
 
-// Sentinel written into the schedule when no eligible doctor could be found.
-// "Unassigned" is the legacy English value; accept both when reading.
-const UNASSIGNED = "未安排";
-function isUnassigned(name) {
-    return name === UNASSIGNED || name === "Unassigned";
-}
+// Single source of truth for these lives in scheduler.js (loaded before this
+// file as the global `Scheduler`) — do not redefine them here.
+const UNASSIGNED = Scheduler.UNASSIGNED;
+const isUnassigned = Scheduler.isUnassigned;
+const formatDate = Scheduler.formatDate;
 
 // DOM Elements
 const calendarGrid = document.getElementById('calendar-grid');
@@ -128,7 +127,7 @@ async function sendReminders() {
         const [y, m, d] = dateStr.split('-').map(Number);
         if (y === year && (m - 1) === month) {
             const assignedUser = schedule[key];
-            if (assignedUser && assignedUser !== "Unassigned") {
+            if (assignedUser && !isUnassigned(assignedUser)) {
                 hasExistingDuties = true;
             }
         }
@@ -163,6 +162,10 @@ async function fetchData() {
         const response = await fetch(API_URL);
         const result = await response.json();
         if (result.status === 'success') {
+            // Deployed-backend version marker; compare against BACKEND_VERSION
+            // in google_apps_script.js to detect repo/deployment drift.
+            if (result.version) console.log('Backend version:', result.version);
+
             users = result.data.users;
             constraints = result.data.constraints;
             schedule = result.data.schedule;
@@ -171,11 +174,11 @@ async function fetchData() {
             renderAll();
         } else {
             console.error("API Error:", result.message);
+            alert("讀取資料失敗：" + result.message);
         }
     } catch (err) {
         console.error("Fetch Error:", err);
-        // Fallback for demo
-        if (users.length === 0) users = [{ name: "測試人員 A", limit: 4 }, { name: "測試人員 B", limit: 4 }];
+        alert("無法連線到後端，請檢查網路後重新整理頁面。");
         renderAll();
     } finally {
         setLoading(false);
@@ -1011,13 +1014,6 @@ function renderYearlyDutyCounts() {
         row.appendChild(countTd);
         yearlyDutyCountsTableBody.appendChild(row);
     });
-}
-
-function formatDate(date) {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
 }
 
 async function clearScheduleForYear() {

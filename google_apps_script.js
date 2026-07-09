@@ -1,22 +1,153 @@
 /**
  * Google Apps Script Backend for Clinic Scheduler
- * 
- * INSTRUCTIONS:
- * 1. Create a new Google Sheet.
- * 2. Rename the first tab to 'Users'.
- * 3. Create a second tab named 'Constraints'.
- * 4. Create a third tab named 'Schedule'.
- * 5. Create a fourth tab named 'Holidays'.
- * 6. Go to Extensions > Apps Script.
- * 7. Paste this code into Code.gs.
- * 8. Click Deploy > New Deployment.
- * 9. Select type: Web app.
- * 10. Description: "Clinic API v3 (Holidays)".
- * 11. Execute as: Me.
- * 12. Who has access: Anyone.
- * 13. Click Deploy.
- * 14. Copy the "Web app URL" and paste it into script.js as API_URL.
+ *
+ * DEPLOY (always full-file replace — never paste fragments):
+ * 1. Bump BACKEND_VERSION below.
+ * 2. Open the bound Sheet > Extensions > Apps Script, select ALL of Code.gs,
+ *    paste this entire file over it, save.
+ * 3. Deploy > Manage deployments > Edit > Version: "New version" > Deploy.
+ *    (Editing the existing deployment keeps the URL stable; a NEW deployment
+ *    changes the URL and requires updating API_URL in script.js.)
+ * 4. Verify: curl "<API_URL>" and check the returned "version" matches.
+ *
+ * FIRST-TIME SETUP: run setup() once (creates the four tabs), then
+ * createMonthlyTriggers() once (installs the two cron jobs). Full steps in
+ * README.md / AGENTS.md.
+ *
+ * SYNC RULE: the BEGIN/END SHARED SCHEDULER block below must be byte-identical
+ * to the one in scheduler.js (tests/parity.test.js enforces it). Never edit it
+ * here — edit scheduler.js and copy the block over.
  */
+
+// Bump on every deploy (any scheme works; date + counter is conventional).
+// doGet echoes this so drift between the repo and the deployed backend is
+// detectable: curl the API and compare with this constant.
+const BACKEND_VERSION = '2026-07-09.1';
+
+// ===== BEGIN SHARED SCHEDULER (sync-guarded) =====
+// This block MUST be byte-identical in scheduler.js and google_apps_script.js
+// (tests/parity.test.js enforces it). Edit the copy in scheduler.js, run
+// `npm test`, then paste the whole block verbatim into google_apps_script.js.
+// Keep it dependency-free: no DOM, no SpreadsheetApp, no outer-scope references.
+
+// Sentinel written when no eligible doctor can be found for a slot.
+// "Unassigned" is the legacy English value; accept both when reading.
+var UNASSIGNED = "未安排";
+
+function isUnassigned(name) {
+    return name === UNASSIGNED || name === "Unassigned";
+}
+
+// Accepts a Date (normal case) or an already-formatted string (Sheets cells
+// may hold either); anything else falls back to String().
+function formatDate(date) {
+    if (!date) return "";
+    if (typeof date === 'string') return date;
+    try {
+        var y = date.getFullYear();
+        var m = String(date.getMonth() + 1).padStart(2, '0');
+        var d = String(date.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + d;
+    } catch (e) {
+        return String(date);
+    }
+}
+
+/**
+ * Builds the schedule for one month's Wednesdays (AM + PM). Returns a NEW
+ * schedule map; opts.existingSchedule is never mutated. Entries for other
+ * months/days are carried over untouched (so the yearly stats survive).
+ *
+ * Rules, applied per slot in queue order:
+ *   1. fairness: queue seeded by this-year duty count asc (excluding the
+ *      target month), then name asc;
+ *   2. skip anyone at/over their monthly `limit`;
+ *   3. skip anyone with a matching constraint (畫休);
+ *   4. skip anyone already assigned the other slot the same day;
+ *   5. round-robin: an assigned doctor moves to the back of the queue.
+ * Holidays clear that Wednesday's slots and assign no one. A slot with no
+ * eligible doctor is set to UNASSIGNED.
+ *
+ * @param {{year:number, month:number, users:Array, constraints:Array,
+ *          holidays:Array, existingSchedule:Object}} opts  month is 0-indexed
+ * @return {Object} new schedule map "YYYY-MM-DD_AM|PM" -> name
+ */
+function generateMonthSchedule(opts) {
+    var year = opts.year;
+    var month = opts.month; // 0 = January
+    var users = opts.users || [];
+    var constraints = opts.constraints || [];
+    var holidays = opts.holidays || [];
+    var schedule = Object.assign({}, opts.existingSchedule || {});
+
+    // 1. Fairness seed: this-year counts, excluding the target month.
+    var yearlyCounts = {};
+    users.forEach(function (u) { yearlyCounts[u.name] = 0; });
+    Object.keys(schedule).forEach(function (key) {
+        var dateStr = key.split('_')[0];
+        var parts = dateStr.split('-').map(Number);
+        if (parts[0] === year && (parts[1] - 1) !== month) {
+            var who = schedule[key];
+            if (who && !isUnassigned(who) && yearlyCounts.hasOwnProperty(who)) {
+                yearlyCounts[who]++;
+            }
+        }
+    });
+
+    var queue = users.slice().sort(function (a, b) {
+        var ca = yearlyCounts[a.name] || 0;
+        var cb = yearlyCounts[b.name] || 0;
+        if (ca !== cb) return ca - cb;
+        return a.name.localeCompare(b.name);
+    });
+
+    var monthlyCounts = {};
+    users.forEach(function (u) { monthlyCounts[u.name] = 0; });
+
+    function assign(dateStr, slot) {
+        var key = dateStr + '_' + slot;
+        var otherSlot = slot === 'AM' ? 'PM' : 'AM';
+        var foundIndex = -1;
+        for (var i = 0; i < queue.length; i++) {
+            var user = queue[i];
+            if (monthlyCounts[user.name] >= user.limit) continue;
+            var blocked = constraints.some(function (c) {
+                return c.user === user.name && c.date === dateStr && c.slot === slot;
+            });
+            if (blocked) continue;
+            if (schedule[dateStr + '_' + otherSlot] === user.name) continue; // same-day
+            foundIndex = i;
+            break;
+        }
+        if (foundIndex >= 0) {
+            var picked = queue[foundIndex];
+            schedule[key] = picked.name;
+            monthlyCounts[picked.name]++;
+            queue.push(queue.splice(foundIndex, 1)[0]); // round-robin
+        } else {
+            schedule[key] = UNASSIGNED;
+        }
+    }
+
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    for (var d = 1; d <= daysInMonth; d++) {
+        var dateObj = new Date(year, month, d);
+        if (dateObj.getDay() !== 3) continue; // Wednesday only
+        var dateStr = formatDate(dateObj);
+
+        // Clear this day first so the same-day check sees only this run.
+        delete schedule[dateStr + '_AM'];
+        delete schedule[dateStr + '_PM'];
+
+        if (holidays.indexOf(dateStr) !== -1) continue;
+
+        assign(dateStr, 'AM');
+        assign(dateStr, 'PM');
+    }
+
+    return schedule;
+}
+// ===== END SHARED SCHEDULER =====
 
 function doGet(e) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -83,6 +214,7 @@ function doGet(e) {
 
     const result = {
         status: 'success',
+        version: BACKEND_VERSION,
         data: { users, constraints, schedule, holidays }
     };
 
@@ -226,6 +358,17 @@ function doPost(e) {
                 }
             }
         } else if (action === 'sendReminders') {
+            // Abuse guard (D-13): the API URL is public, so cap manual
+            // notification sends to one success per hour. The monthly cron
+            // (autoSendReminderEmail) does not go through doPost and is
+            // therefore unaffected.
+            const props = PropertiesService.getScriptProperties();
+            const lastSendTs = Number(props.getProperty('LAST_REMINDER_TS') || 0);
+            if (Date.now() - lastSendTs < 60 * 60 * 1000) {
+                return errorResponse("通知信 60 分鐘內已發送過，請稍後再試");
+            }
+            props.setProperty('LAST_REMINDER_TS', String(Date.now()));
+
             const usersSheet = ss.getSheetByName('Users');
             const usersData = usersSheet.getDataRange().getValues();
             let startRow = (usersData.length > 0 && usersData[0][0] === "Name") ? 1 : 0;
@@ -291,18 +434,7 @@ function errorResponse(msg) {
         .setMimeType(ContentService.MimeType.JSON);
 }
 
-function formatDate(date) {
-    if (!date) return "";
-    if (typeof date === 'string') return date;
-    try {
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const d = String(date.getDate()).padStart(2, '0');
-        return `${y}-${m}-${d}`;
-    } catch (e) {
-        return String(date);
-    }
-}
+// formatDate lives in the SHARED SCHEDULER block near the top of this file.
 
 /**
  * Scans a schedule map for slots left "未安排" in the given year/month.
@@ -316,7 +448,7 @@ function getUnassignedSlots(scheduleMap, year, monthIdx) {
     Object.keys(scheduleMap).forEach(key => {
         const [dateStr, slot] = key.split('_');
         const [y, m, d] = dateStr.split('-').map(Number);
-        if (y === year && (m - 1) === monthIdx && scheduleMap[key] === "未安排") {
+        if (y === year && (m - 1) === monthIdx && isUnassigned(scheduleMap[key])) {
             unassigned.push({ m, d, slot });
         }
     });
@@ -362,6 +494,52 @@ function setup() {
     if (!ss.getSheetByName('Constraints')) ss.insertSheet('Constraints').appendRow(['User', 'Date', 'Slot']);
     if (!ss.getSheetByName('Schedule')) ss.insertSheet('Schedule').appendRow(['Key', 'Assigned User']);
     if (!ss.getSheetByName('Holidays')) ss.insertSheet('Holidays').appendRow(['Date']);
+}
+
+// ==========================================
+// WEEKLY BACKUP (D-14)
+// ==========================================
+
+/**
+ * Copies the entire spreadsheet to Drive as "RosterBackup_YYYY-MM-DD" and
+ * keeps only the newest 8 copies. Installed by createBackupTrigger().
+ * NOTE: uses DriveApp — the first deploy after adding this will ask for the
+ * additional Drive permission during authorization.
+ */
+function weeklyBackup() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const name = 'RosterBackup_' + formatDate(new Date());
+    ss.copy(name);
+    Logger.log('Backup created: ' + name);
+
+    // Prune: keep the 8 newest backups, trash the rest.
+    const files = [];
+    const it = DriveApp.searchFiles("title contains 'RosterBackup_' and trashed = false");
+    while (it.hasNext()) files.push(it.next());
+    files.sort((a, b) => b.getDateCreated() - a.getDateCreated());
+    for (let i = 8; i < files.length; i++) {
+        files[i].setTrashed(true);
+        Logger.log('Trashed old backup: ' + files[i].getName());
+    }
+}
+
+/**
+ * Run ONCE from the editor to install the weekly backup trigger
+ * (every Monday around 2:00 AM).
+ */
+function createBackupTrigger() {
+    const exists = ScriptApp.getProjectTriggers()
+        .some(t => t.getHandlerFunction() === 'weeklyBackup');
+    if (exists) {
+        Logger.log('Backup trigger already exists.');
+        return;
+    }
+    ScriptApp.newTrigger('weeklyBackup')
+        .timeBased()
+        .onWeekDay(ScriptApp.WeekDay.MONDAY)
+        .atHour(2)
+        .create();
+    Logger.log('Weekly backup trigger created (Mondays ~2:00 AM).');
 }
 
 // ==========================================
@@ -502,7 +680,7 @@ function autoGenerateSchedule() {
                 const [dateStr, _] = key.split('_');
                 const [y, m, d] = dateStr.split('-').map(Number);
                 if (y === targetYear && (m - 1) === targetMonthIdx) {
-                    if (assignedUser && assignedUser !== "Unassigned") {
+                    if (assignedUser && !isUnassigned(assignedUser)) {
                         hasExistingDuties = true;
                     }
                 }
@@ -553,97 +731,18 @@ function autoGenerateSchedule() {
             }
         }
 
-        // 3. Fairness Seed: Calculate Yearly Counts excluding the target month
-        const yearlyCounts = {};
-        users.forEach(u => yearlyCounts[u.name] = 0);
-
-        Object.keys(scheduleMap).forEach(key => {
-            const [dateStr, _] = key.split('_');
-            const [y, m, d] = dateStr.split('-').map(Number);
-
-            if (y === targetYear && (m - 1) !== targetMonthIdx) {
-                const assignedUser = scheduleMap[key];
-                if (assignedUser && assignedUser !== "Unassigned" && yearlyCounts.hasOwnProperty(assignedUser)) {
-                    yearlyCounts[assignedUser]++;
-                }
-            }
+        // 3. Run the shared scheduling algorithm (SHARED SCHEDULER block above —
+        // the exact same code path the manual 一鍵排班 button exercises).
+        scheduleMap = generateMonthSchedule({
+            year: targetYear,
+            month: targetMonthIdx,
+            users: users,
+            constraints: constraints,
+            holidays: holidays,
+            existingSchedule: scheduleMap
         });
 
-        // Initialize Queue sorted by Yearly Count (ASC) then Name (ASC)
-        let queue = [...users].sort((a, b) => {
-            const countA = yearlyCounts[a.name] || 0;
-            const countB = yearlyCounts[b.name] || 0;
-            if (countA !== countB) return countA - countB;
-            return a.name.localeCompare(b.name);
-        });
-
-        const monthlyCounts = {};
-        users.forEach(u => monthlyCounts[u.name] = 0);
-
-        // 4. Iterate over days in target month
-        // We need the number of days in the target month
-        // Date(year, month, 0) gives the last day of the PREVIOUS month. 
-        // So Date(targetYear, targetMonthIdx + 1, 0) gives last day of targetMonthIdx.
-        const lastDayObj = new Date(targetYear, targetMonthIdx + 1, 0);
-        const daysInMonth = lastDayObj.getDate();
-
-        // Helper function for assigning valid user
-        function assignNextAvailable(dateStr, slot) {
-            const key = `${dateStr}_${slot}`;
-            let assignedUser = null;
-            let foundIndex = -1;
-
-            for (let i = 0; i < queue.length; i++) {
-                const user = queue[i];
-
-                if (monthlyCounts[user.name] >= user.limit) continue;
-
-                const isUnavailable = constraints.some(c =>
-                    c.user === user.name && c.date === dateStr && c.slot === slot
-                );
-                if (isUnavailable) continue;
-
-                // Same-Day: avoid assigning the same person to both AM and PM on the same day
-                const otherSlot = slot === 'AM' ? 'PM' : 'AM';
-                if (scheduleMap[`${dateStr}_${otherSlot}`] === user.name) continue;
-
-                // Found
-                assignedUser = user;
-                foundIndex = i;
-                break;
-            }
-
-            if (assignedUser) {
-                scheduleMap[key] = assignedUser.name;
-                monthlyCounts[assignedUser.name]++;
-                // Round Robin
-                queue.push(queue.splice(foundIndex, 1)[0]);
-            } else {
-                scheduleMap[key] = "未安排";
-            }
-        }
-
-        // Iterate Slots
-        for (let d = 1; d <= daysInMonth; d++) {
-            const dateObj = new Date(targetYear, targetMonthIdx, d);
-            if (dateObj.getDay() === 3) { // Wednesday
-                const dateStr = formatDate(dateObj);
-
-                // Clear any previous assignment for this day first, so the
-                // same-day check evaluates against this run's results only.
-                delete scheduleMap[`${dateStr}_AM`];
-                delete scheduleMap[`${dateStr}_PM`];
-
-                if (holidays.includes(dateStr)) {
-                    continue;
-                }
-
-                assignNextAvailable(dateStr, 'AM');
-                assignNextAvailable(dateStr, 'PM');
-            }
-        }
-
-        // 5. Save Schedule back to Sheet
+        // 4. Save Schedule back to Sheet
         scheduleSheet.clear();
         scheduleSheet.appendRow(["Key", "Assigned User"]);
         const rows = [];
@@ -656,7 +755,7 @@ function autoGenerateSchedule() {
 
         Logger.log(`Successfully generated schedule for ${targetYear}-${targetMonthDisplay}.`);
 
-        // 6. Send Notifications
+        // 5. Send Notifications
         const unassignedNote = formatUnassignedNote(getUnassignedSlots(scheduleMap, targetYear, targetMonthIdx));
         const subject = `[通知] MO旅醫門診 ${targetYear}年${targetMonthDisplay}月 班表已自動排定`;
         const body = `大家好，\n\n系統已於今日自動完成 ${targetYear}年${targetMonthDisplay}月 的旅醫門診自動排班作業。\n請至排班網頁確認您的班表，並可以點擊班表上的「行事曆圖示」將門診時段加入您的個人 Google Calendar 中。\n(若需臨時異動，請自行協商換班)${unassignedNote}\n\n排班網頁：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統自動派發\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
