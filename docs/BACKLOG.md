@@ -74,3 +74,12 @@ Replace per-slot GCal links with a per-doctor ICS URL (GAS `doGet` with
 `?ics=<doctor>` returning `text/calendar`) so a doctor subscribes once and
 future duties appear automatically. Nice demo-able win; needs cache headers
 and a stable per-doctor identifier.
+
+### B-13 · Offer to send the notification email right after manual 一鍵排班
+Today only the monthly cron emails automatically; after a manual generate the
+admin must remember to click 發送通知信 separately. **Sketch**: at the end of
+`generateSchedule()` (after a successful `saveSchedule`), `confirm("班表已儲存，
+要立即發送通知信給所有人嗎？")` → on yes, call the existing `sendReminders()`
+flow. Mind the hourly rate limit (D-13): a decline-then-retry within the hour
+is fine, but two sends within an hour will be rejected server-side.
+Proposed to the owner 2026-07; not yet approved — confirm before building.
