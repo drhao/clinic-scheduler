@@ -547,7 +547,8 @@ function loginLinkFor(user) {
 
 /**
  * Emails every user who has an address. makeBody(link) receives the
- * recipient's personal login link and returns the body text.
+ * recipient's personal login link and returns the body text, which must
+ * include that link (I11) — use this for every email to users.
  */
 function sendToAllUsers(ss, subject, makeBody) {
     getUsersWithTokens(ss).forEach(user => {

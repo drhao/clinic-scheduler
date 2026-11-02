@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 **`AGENTS.md` is the canonical engineering document for this repo — read it
-before making any change.** It contains the system map, the invariants (I1–I10),
+before making any change.** It contains the system map, the invariants (I1–I11),
 the deployment asymmetry rules (the backend does NOT deploy from git), the
 SHARED SCHEDULER sync procedure, workflows, and runbooks. It is imported below.
 

@@ -59,6 +59,7 @@ requires a valid personal login token in `data.token` (D-15).
 - **I8 · Language**: UI strings and email bodies are zh-TW. `README.md`/`USER_GUIDE.md` (Chinese) are canonical; `*_EN.md` are derived translations — update Chinese first.
 - **I9 · Duplicate constraint prevention exists on both client and server** — keep both.
 - **I10 · Timezone**: all date math assumes the GAS project timezone is `Asia/Taipei` (Apps Script editor → Project Settings). If cron emails or dates ever look shifted by a day, check this first.
+- **I11 · Every email carries the recipient's personal login link** (D-15): reminders, schedule-ready notices, cron mails — any new email to users goes through `sendToAllUsers(ss, subject, link => ...)` (or `loginLinkFor(user)` for one recipient) and puts `${link}` in the body with the 請勿轉寄 note. Never email the bare `APP_URL`; that's how doctors log in on a new device.
 
 ## 4. The deployment asymmetry — most important operational fact
 
