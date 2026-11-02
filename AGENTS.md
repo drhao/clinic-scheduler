@@ -51,7 +51,7 @@ requires a valid personal login token in `data.token` (D-15).
 
 - **I1 · Schedule keys**: flat map `"YYYY-MM-DD_AM"` / `"YYYY-MM-DD_PM"` → doctor name. Dates always zero-padded via `formatDate()`.
 - **I2 · Unassigned sentinel**: write `UNASSIGNED` (`"未安排"`); read with `isUnassigned()` (also accepts legacy `"Unassigned"`). Never compare against either literal directly — sessions before this rule existed shipped real bugs that way.
-- **I3 · Client is source of truth on save**: `saveSchedule` clears and rewrites the whole Schedule tab from the client's map. Consequence: concurrent editors can silently overwrite each other (accepted risk, see D-02; mitigation designed in BACKLOG B-03).
+- **I3 · Client is source of truth on save**: `saveSchedule` clears and rewrites the whole Schedule tab from the client's map. Guarded by the schedule revision (D-16): every write sends `revision`, a stale `saveSchedule` is rejected with `code: 'conflict'`, and anything that rewrites Schedule rows must call `bumpScheduleRevision()`.
 - **I4 · `limit` is a hard cap**: the algorithm never relaxes it to fill a slot. Empty slots are surfaced instead (red UI + email note via `getUnassignedSlots`/`formatUnassignedNote`).
 - **I5 · Algorithm determinism**: fairness queue = this-year duty count ascending (excluding target month), ties broken by `localeCompare` on name; round-robin to back of queue; same-day AM/PM exclusion; holidays clear both slots. Tests depend on this determinism — no randomness.
 - **I6 · Optimistic UI pairing**: every mutation takes `snapshotState()` first, updates state + re-renders, `await postData(...)`, and calls `restoreState(snap)` on falsy result. Never add a mutation without the rollback half.
