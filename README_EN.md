@@ -23,7 +23,7 @@ This application runs entirely in the browser (`index.html`) but requires a Goog
 ### 1. Google Sheets Setup
 1. Create a new Google Sheet.
 2. Create four tabs at the bottom with the exact names:
-   - `Users` (Columns: Name, Limit)
+   - `Users` (Columns: Name, Limit, Email, Token — tokens are generated automatically)
    - `Constraints` (Columns: User, Date, Slot)
    - `Schedule` (Columns: Key, User)
    - `Holidays` (Columns: Date)
@@ -50,6 +50,13 @@ This application runs entirely in the browser (`index.html`) but requires a Goog
    const API_URL = "YOUR_WEB_APP_URL_HERE";
    ```
 3. Paste your Web App URL there.
+
+### 4. Send Login Links
+After adding users with emails, run `sendLoginLinksToAll()` once from the Apps Script editor.
+
+**Access control (personal links)**: there are no passwords. Every system email carries the recipient's personal link (`…/#t=<token>`); opening it unlocks management on that device. Without it, visitors can view the schedule and add/remove constraints only, and emails are never returned by the public API. On a new device, click the link again or use "寄給我登入連結" (email me my login link). To revoke someone, clear their Token cell in `Users`.
+
+**Upgrading from a version without login links**: run `setup()` once (adds the `Token` header), redeploy the backend via Manage deployments > Edit > New version (keeps the URL), merge the frontend, then run `sendLoginLinksToAll()`.
 
 ---
 

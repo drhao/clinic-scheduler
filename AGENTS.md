@@ -37,12 +37,15 @@ ask the owner — do not just do it.
 | `docs/BACKLOG.md` | Known issues + designed-but-not-built improvements. Check before starting work |
 
 Database = 4 tabs in the bound Google Sheet:
-`Users` (Name, Limit, Email) · `Constraints` (User, Date, Slot) ·
+`Users` (Name, Limit, Email, Token) · `Constraints` (User, Date, Slot) ·
 `Schedule` (Key, Assigned User) · `Holidays` (Date).
 
-API: `doGet` → all data + `version`. `doPost` dispatches on `action`:
-`addUser`, `deleteUser`, `editUser`, `addConstraint`, `removeConstraint`,
-`saveSchedule`, `addHoliday`, `removeHoliday`, `sendReminders`.
+API: `doGet` → all data **without emails** + `version`. `doPost` dispatches
+on `action`: `getData` (all data incl. emails), `addUser`, `deleteUser`,
+`editUser`, `addConstraint`, `removeConstraint`, `saveSchedule`,
+`addHoliday`, `removeHoliday`, `sendReminders`, `requestLink`. Every action
+except `PUBLIC_ACTIONS` (`addConstraint`, `removeConstraint`, `requestLink`)
+requires a valid personal login token in `data.token` (D-15).
 
 ## 3. Invariants — do not break these
 
@@ -130,14 +133,20 @@ requires updating `API_URL` in `script.js` — avoid unless intended.)
 **R-B · From-scratch setup**: new Google Sheet → Extensions → Apps Script →
 paste file → run `setup()` once → run `createMonthlyTriggers()` once → run
 `createBackupTrigger()` once → Deploy as Web app (Execute as: Me / Access:
-Anyone) → put the Web App URL into `API_URL` in `script.js`. Verify project
-timezone = Asia/Taipei (I10).
+Anyone) → put the Web App URL into `API_URL` in `script.js` → add users with
+emails → run `sendLoginLinksToAll()` once. Verify project timezone =
+Asia/Taipei (I10).
 
-**R-C · Enable the write-auth gate** (currently disabled by decision D-07):
-uncomment the token check in `doPost`, restore `getAuthToken()` +
-`PUBLIC_ACTIONS` in `script.js` `postData` (see git history around the commit
-"disable the admin-password gate"), set the password via `setApiToken()`,
-redeploy. Keep the two `PUBLIC_ACTIONS` lists identical.
+**R-C · Personal login links** (D-15): tokens live in `Users` column D and are
+generated lazily (on `addUser`, or the first email sent to that user).
+- *Someone can't log in*: they press 寄給我登入連結 on the page (one email per
+  address per 10 min), or run `sendLoginLinksToAll()` from the editor.
+- *Revoke access* (lost phone, forwarded link, someone left): clear their
+  Token cell; a new one is generated on the next email. Deleting the user
+  revokes it too.
+- *Upgrading a sheet created before D-15*: run `setup()` once to add the
+  `Token` header, deploy the backend (R-A), let GitHub Pages pick up the
+  frontend, then run `sendLoginLinksToAll()`.
 
 **R-D · Data recovery**: two layers. 1) Weekly automatic backups: Drive files
 named `RosterBackup_YYYY-MM-DD` (newest 8 kept; created by `weeklyBackup`,
@@ -159,16 +168,20 @@ results time-sensitive by design.
 
 ## 9. Security & data posture (deliberate, owner-approved)
 
-- Reads AND writes are open to anyone with the API URL — and the URL is public
-  in this repo. The auth mechanism exists but is disabled (D-07). Data is
-  doctors' names, emails, and shifts.
+- The API URL is public in this repo. Anyone can read names, constraints and
+  the schedule, and add/remove 畫休 (`PUBLIC_ACTIONS`). Every other write, and
+  any read that includes emails, needs a personal login token (D-15). There
+  are no passwords: tokens arrive inside the system's own emails.
+- Tokens are bearer secrets: never log them, put them in a query string
+  (the frontend strips `#t=` from the address bar on load), or return them
+  from any endpoint.
 - `sendReminders` (mass email to all doctors; MailApp consumer quota ≈ 100
   recipients/day) is rate-limited to one send per hour server-side (D-13) —
   that limit is the only thing standing between the public URL and the mail
   quota, so never remove it casually.
-- Do not silently re-enable auth or add security friction; propose via
-  BACKLOG/PR instead. If you find evidence of actual abuse, alert the owner
-  and recommend R-C the same day.
+- Do not move actions into or out of `PUBLIC_ACTIONS` (backend list + the
+  `.admin-only` UI) without the owner's decision; record it in DECISIONS. If
+  you find evidence of abuse of the public 畫休 actions, alert the owner.
 
 ## 10. Where knowledge lives
 

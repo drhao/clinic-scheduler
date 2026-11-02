@@ -72,6 +72,29 @@ header {
     align-items: center;
 }
 
+/* Login gate (D-15): management controls need a personal-link token */
+body.read-only .admin-only,
+body:not(.read-only) .read-only-only {
+    display: none !important;
+}
+
+.auth-banner {
+    margin: 0 3rem 1rem;
+    padding: 0.75rem 1.25rem;
+    background-color: var(--primary-light);
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.auth-banner .secondary-btn {
+    background-color: var(--card-bg);
+}
+
 h1 {
     font-size: 1.5rem;
     font-weight: 600;
@@ -281,6 +304,10 @@ button {
     align-items: center;
     cursor: pointer;
     transition: filter 0.15s, box-shadow 0.15s;
+}
+
+.schedule-slot.read-only-slot {
+    cursor: default;
 }
 
 .schedule-slot:hover {
@@ -636,6 +663,10 @@ button {
     .schedule-slot {
         font-size: 0.95rem;
         padding: 0.6rem 0.8rem;
+    }
+
+    .auth-banner {
+        margin: 0 1rem 1rem;
     }
 }
 
