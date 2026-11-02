@@ -21,7 +21,8 @@ manual backend deploys (AGENTS §4), no staging, and Sheets-scale data limits
 **Decision**: client sends its entire schedule map; server clears the tab and rewrites it.
 **Consequences**: dead-simple sync, idempotent; but last-writer-wins — two
 concurrent admins can silently drop each other's changes. Accepted because
-there is effectively one admin. Mitigation designed in B-03.
+there is effectively one admin. Mitigated by D-16 (revision check): a stale
+save is now rejected instead of silently winning.
 **Revisit when**: more than one person routinely edits schedules.
 
 ## D-03 · `limit` is a hard cap; empty slots are surfaced, not forced
@@ -136,3 +137,22 @@ outsider can still add/remove constraints for listed names (validated
 server-side). The D-13 rate limit stays as defence in depth.
 **Revisit when**: roles are needed (admin vs doctor), abuse of the public
 畫休 actions appears, or doctors routinely forward their emails.
+
+## D-16 · Optimistic concurrency on the Schedule tab (schedule revision)
+**Context**: D-15 made every doctor a potential editor, so D-02's
+"effectively one admin" assumption no longer holds; a page left open across
+the 5th could also wipe the cron's freshly generated month on its next save.
+**Decision**: a `SCHEDULE_REVISION` integer in Script Properties. Data reads
+return it; the client sends its `revision` with every write. `saveSchedule`
+is rejected with `code: 'conflict'` unless the revision matches, and the
+client then rolls back and reloads. Every write that changes the Schedule tab
+bumps it: `saveSchedule`, `deleteUser`/`editUser` (only when they touched
+Schedule rows) and `autoGenerateSchedule`. A write returns the new revision
+only when the caller was current, so a stale page never adopts a revision
+whose changes it hasn't loaded.
+**Consequences**: lost updates become a visible "please reload" instead of
+silent data loss. Saving is still a full overwrite (D-02), so any concurrent
+schedule change — even a different month — forces the second editor to
+reload and redo their action. Users/constraints/holidays are row-level
+writes and are not revision-checked.
+**Revisit when**: conflicts become frequent enough to justify per-slot writes.

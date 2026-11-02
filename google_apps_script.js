@@ -28,7 +28,7 @@
 // Bump on every deploy (any scheme works; date + counter is conventional).
 // doGet echoes this so drift between the repo and the deployed backend is
 // detectable: curl the API and compare with this constant.
-const BACKEND_VERSION = '2026-11-02.1';
+const BACKEND_VERSION = '2026-11-02.2';
 
 // Front-end URL used for the personal login links inside emails.
 const APP_URL = 'https://drhao.github.io/clinic-scheduler/';
@@ -235,7 +235,28 @@ function readAllData(ss, includeEmails) {
         }
     }
 
-    return { users, constraints, schedule, holidays };
+    return { users, constraints, schedule, holidays, revision: getScheduleRevision() };
+}
+
+// ==========================================
+// SCHEDULE REVISION (D-16) — optimistic concurrency for the Schedule tab
+// ==========================================
+
+function getScheduleRevision() {
+    return Number(PropertiesService.getScriptProperties().getProperty('SCHEDULE_REVISION') || 0);
+}
+
+/**
+ * Call after any write that changed the Schedule tab. Returns the new
+ * revision only if the caller was up to date (clientRevision === previous
+ * revision); a stale client gets undefined so it never adopts a revision
+ * whose changes it hasn't loaded.
+ */
+function bumpScheduleRevision(clientRevision) {
+    const current = getScheduleRevision();
+    const next = current + 1;
+    PropertiesService.getScriptProperties().setProperty('SCHEDULE_REVISION', String(next));
+    return Number(clientRevision) === current ? next : undefined;
 }
 
 function doPost(e) {
@@ -255,6 +276,8 @@ function doPost(e) {
     }
 
     try {
+        let revision; // new schedule revision, set by actions that change the Schedule tab
+
         // Login gate (D-15)
         if (PUBLIC_ACTIONS.indexOf(action) === -1 && !findUserByToken(ss, data.token)) {
             return errorResponse("尚未登入或登入連結已失效，請使用 Email 中的個人連結開啟網頁", 'unauthorized');
@@ -284,11 +307,14 @@ function doPost(e) {
             // rather than referencing a doctor who no longer exists.
             const scheduleSheet = ss.getSheetByName('Schedule');
             const scheduleValues = scheduleSheet.getDataRange().getValues();
+            let scheduleChanged = false;
             for (let i = 0; i < scheduleValues.length; i++) {
                 if (scheduleValues[i][1] === data.name) { // Column 2 (index 1) is Assigned User
                     scheduleSheet.getRange(i + 1, 2).setValue("未安排");
+                    scheduleChanged = true;
                 }
             }
+            if (scheduleChanged) revision = bumpScheduleRevision(data.revision);
 
         } else if (action === 'editUser') {
             const oldName = data.oldName;
@@ -318,11 +344,14 @@ function doPost(e) {
             // 3. Update Schedule Sheet
             const scheduleSheet = ss.getSheetByName('Schedule');
             const scheduleValues = scheduleSheet.getDataRange().getValues();
+            let scheduleChanged = false;
             for (let i = 0; i < scheduleValues.length; i++) {
                 if (scheduleValues[i][1] === oldName) { // Column 2 (Index 1) is Assigned User
                     scheduleSheet.getRange(i + 1, 2).setValue(newName);
+                    scheduleChanged = true;
                 }
             }
+            if (scheduleChanged) revision = bumpScheduleRevision(data.revision);
 
         } else if (action === 'addConstraint') {
             // Public action: only accept well-formed rows for a doctor on the list.
@@ -357,6 +386,11 @@ function doPost(e) {
             }
 
         } else if (action === 'saveSchedule') {
+            // Full overwrite (D-02) is only safe from a client that has seen
+            // the latest schedule (D-16). Clients without a revision are stale too.
+            if (Number(data.revision) !== getScheduleRevision()) {
+                return errorResponse("班表已被其他人（或自動排班）更新，畫面將重新載入最新資料，請確認後再操作一次", 'conflict');
+            }
             const sheet = ss.getSheetByName('Schedule');
             sheet.clear();
             sheet.appendRow(["Key", "Assigned User"]);
@@ -368,6 +402,7 @@ function doPost(e) {
             if (rows.length > 0) {
                 sheet.getRange(2, 1, rows.length, 2).setValues(rows);
             }
+            revision = bumpScheduleRevision(data.revision);
 
         } else if (action === 'addHoliday') {
             const sheet = ss.getSheetByName('Holidays');
@@ -443,7 +478,9 @@ function doPost(e) {
             }
         }
 
-        return jsonResponse({ status: 'success' });
+        // revision is set only by actions that changed the Schedule tab
+        // (undefined is dropped by JSON.stringify).
+        return jsonResponse({ status: 'success', revision: revision });
 
     } catch (err) {
         return errorResponse(err.toString());
@@ -457,7 +494,8 @@ function jsonResponse(obj) {
         .setMimeType(ContentService.MimeType.JSON);
 }
 
-// code: 'unauthorized' tells the frontend to drop its stored login token.
+// code: 'unauthorized' tells the frontend to drop its stored login token;
+// 'conflict' tells it to reload the data (D-16).
 function errorResponse(msg, code) {
     return jsonResponse({ status: 'error', message: msg, code: code || 'error' });
 }
@@ -509,7 +547,8 @@ function loginLinkFor(user) {
 
 /**
  * Emails every user who has an address. makeBody(link) receives the
- * recipient's personal login link and returns the body text.
+ * recipient's personal login link and returns the body text, which must
+ * include that link (I11) — use this for every email to users.
  */
 function sendToAllUsers(ss, subject, makeBody) {
     getUsersWithTokens(ss).forEach(user => {
@@ -835,6 +874,7 @@ function autoGenerateSchedule() {
         if (rows.length > 0) {
             scheduleSheet.getRange(2, 1, rows.length, 2).setValues(rows);
         }
+        bumpScheduleRevision(); // any page opened before this run must reload before saving (D-16)
 
         Logger.log(`Successfully generated schedule for ${targetYear}-${targetMonthDisplay}.`);
 

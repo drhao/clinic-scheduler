@@ -19,6 +19,9 @@ let constraints = [];
 let schedule = {};
 let holidays = []; // Array of date strings "YYYY-MM-DD"
 let isLoading = false;
+// Revision of the schedule this page last loaded or saved (D-16). Sent with
+// every write; saveSchedule is rejected if someone else changed it since.
+let scheduleRevision = 0;
 
 // Personal login token (D-15), delivered as …/#t=<token> in every system
 // email. Without it the page is read-only except for 畫休 entry.
@@ -239,6 +242,7 @@ async function fetchData() {
             constraints = result.data.constraints;
             schedule = result.data.schedule;
             holidays = result.data.holidays || [];
+            scheduleRevision = result.data.revision || 0;
 
             renderAll();
         } else {
@@ -256,10 +260,11 @@ async function fetchData() {
 
 async function postData(action, payload) {
     setLoading(true);
+    let reloadAfter = false;
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
-            body: JSON.stringify({ action, token: authToken, ...payload })
+            body: JSON.stringify({ action, token: authToken, revision: scheduleRevision, ...payload })
         });
         const result = await response.json();
         if (result.code === 'unauthorized') {
@@ -267,10 +272,18 @@ async function postData(action, payload) {
             alert(result.message);
             return false;
         }
+        if (result.code === 'conflict') {
+            // The caller rolls back its optimistic update; then reload the
+            // latest data so the next attempt starts from current state.
+            alert(result.message);
+            reloadAfter = true;
+            return false;
+        }
         if (result.status !== 'success') {
             alert("Error saving data: " + result.message);
             return false;
         }
+        if (result.revision !== undefined) scheduleRevision = result.revision;
         return true;
     } catch (err) {
         console.error("Post Error:", err);
@@ -278,6 +291,7 @@ async function postData(action, payload) {
         return false;
     } finally {
         setLoading(false);
+        if (reloadAfter) fetchData();
     }
 }
 
@@ -1012,7 +1026,8 @@ function renderYearlyDutyCounts() {
     if (!yearlyDutyCountsTableBody) return;
     yearlyDutyCountsTableBody.innerHTML = '';
 
-    const year = new Date().getFullYear();
+    // Follow the year being browsed, so planning January shows that year's totals.
+    const year = currentDate.getFullYear();
 
     // Update Header
     const yearlyHeader = document.querySelector('#yearly-duty-counts-table th:nth-child(2)');

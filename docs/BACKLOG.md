@@ -9,18 +9,12 @@ Priorities: **P1** = real risk today · **P2** = will bite as usage grows ·
 **P3** = quality-of-life.
 
 IDs are stable and never reused; gaps mean the item shipped (B-01 → rate
-limit, D-13; B-02 → weekly backup, D-14; B-11 → personal login links, D-15).
+limit, D-13; B-02 → weekly backup, D-14; B-11 → personal login links, D-15;
+B-03 → schedule revision check, D-16; B-09 → yearly stats follow the browsed year).
 
 ---
 
 ## P2
-
-### B-03 · Concurrent-editor lost updates (D-02's accepted risk)
-**Sketch (optimistic concurrency)**: `doGet` returns a `revision` (store an
-integer in Script Properties, bumped inside every `saveSchedule`). Client
-remembers the revision it loaded; `saveSchedule` sends it; server rejects on
-mismatch with "資料已被其他人更新，請重新整理後再操作"; client refetches.
-~20 lines total across both files. Do this before ever adding a second admin.
 
 ### B-04 · Backend deploys are manual (drift risk)
 Owner decided (2026-07) to stay manual with the `BACKEND_VERSION` marker for
@@ -54,11 +48,6 @@ disable via CSS `pointer-events` on `body.loading`.
 ### B-08 · Server-side duplicate checks are thinner than client-side
 `addUser` has no server-side name-uniqueness check (client only). Two tabs can
 create duplicate doctors. Mirror the client check in `doPost`.
-
-### B-09 · Yearly stats always show the *current* year
-`renderYearlyDutyCounts()` uses `new Date().getFullYear()` regardless of the
-month being browsed; viewing December while planning January shows the old
-year's stats under the new month. Consider following `currentDate`'s year.
 
 ### B-10 · Add-to-home-screen polish for phones
 No favicon / `manifest.json` / `apple-touch-icon`; doctors likely open this on

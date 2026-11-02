@@ -10,6 +10,7 @@ Every email from the system contains your **personal link**. Opening it lets tha
 - Without logging in, you can still view the schedule and add your unavailable times.
 - On a new device, click the link again, or press "✉️ 寄給我登入連結" (email me my login link) and enter your registered email.
 - The link acts as your login, so **do not forward it**.
+- If you see "班表已被其他人（或自動排班）更新" (the schedule was updated by someone else), your page was out of date. It reloads the latest schedule automatically — check it and redo your change; nobody else's edit is overwritten.
 
 ## 2. Managing Staff
 You can add new doctors or staff members on the right-hand panel under **"Manage Staff"**.
@@ -47,7 +48,7 @@ The system is configured to **automatically generate the schedule on the 5th of 
 
 ## 6. Viewing Statistics
 -   **Monthly Summary**: The table below the calendar shows how many shifts everyone has *this month*. (Red numbers mean they hit their limit).
--   **Yearly Summary**: The bottom table shows the total shifts for the *entire year*.
+-   **Yearly Summary**: The bottom table shows the total shifts for the *year of the month you are viewing*.
     -   **Tip**: Hover your mouse over the total number to see a breakdown (e.g., "Jan: 2, Feb: 1").
 
 ## 7. Starting a New Year / Clearing Data
