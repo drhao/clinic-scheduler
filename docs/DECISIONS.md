@@ -53,7 +53,7 @@ accepting legacy English `"Unassigned"` (old rows may persist in the Sheet).
 **Consequences**: never compare sentinel literals directly (invariant I2).
 Two real bugs shipped from violating this; both fixed 2026-07.
 
-## D-07 · Write-auth gate built, then disabled (owner decision)
+## D-07 · Write-auth gate built, then disabled (owner decision) — superseded by D-15
 **Context**: gate was added (Script-Property token + localStorage password),
 then the owner chose zero-friction for the small trusted team.
 **Decision**: all writes open; mechanism kept in code, commented, with
@@ -112,3 +112,27 @@ point of data loss; version history thins over time.
 `createBackupTrigger()` (Mondays 02:00). Adds a Drive OAuth scope.
 **Consequences**: worst-case data loss window ≈ 1 week + version history for
 anything newer. Recovery runbook: AGENTS R-D.
+
+## D-15 · Personal login links (magic-link tokens) instead of open writes
+**Context**: D-07 left every write open, and `doGet` returned every doctor's
+email to anyone holding the public URL. The owner wants outsiders kept out
+but rejected passwords ("I don't want everyone to memorise a password") and
+wants every doctor on the list to be able to manage (2026-11).
+**Decision**: each user gets a random token (`Utilities.getUuid()`, Users
+column D). Every system email links to `APP_URL#t=<token>`; the frontend
+stores it in `localStorage`, strips it from the address bar, and sends it as
+`data.token`. `doPost` rejects all actions except `PUBLIC_ACTIONS`
+(`addConstraint`, `removeConstraint`, `requestLink`) without a valid token.
+`doGet` no longer returns emails; logged-in clients load via the `getData`
+POST action. Any token holder has full management rights (no roles).
+`saveSchedule` (manual assign/swap) is gated too — unlike the D-07 design —
+because every doctor now holds a link, so the exemption is no longer needed.
+`requestLink` lets anyone ask for their link by email (always answers
+success; at most one email per address per 10 min).
+**Consequences**: no passwords; access is tied to the doctor's inbox. A
+forwarded email grants access, so emails say "請勿轉寄". Revocation = clear the
+Token cell (AGENTS R-C). 畫休 entry stays open by owner choice, so an
+outsider can still add/remove constraints for listed names (validated
+server-side). The D-13 rate limit stays as defence in depth.
+**Revisit when**: roles are needed (admin vs doctor), abuse of the public
+畫休 actions appears, or doctors routinely forward their emails.

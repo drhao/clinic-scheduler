@@ -16,12 +16,19 @@
             <h1>MO旅醫門診排班系統</h1>
             <button id="help-btn" class="secondary-btn" title="查看使用說明" style="font-size: 0.9rem;">📖 使用說明</button>
         </div>
-        <div class="header-actions">
+        <div class="header-actions admin-only">
             <button id="remind-btn" class="secondary-btn">✉️ 發送通知信 (提醒排班/班表)</button>
             <button id="clear-year-btn" class="danger-btn">🗑️ 清除整年班表</button>
             <button id="generate-btn" class="primary-btn">✨ 一鍵排班</button>
+            <button id="logout-btn" class="secondary-btn" title="登出這台裝置">登出</button>
         </div>
     </header>
+
+    <!-- Shown only when not logged in (D-15) -->
+    <div id="auth-banner" class="auth-banner read-only-only">
+        <span>目前為檢視模式：可以查看班表與填寫不排班時間。若要換班、管理人員、假日或排班，請點擊 Email 中的個人連結開啟網頁。</span>
+        <button id="request-link-btn" class="secondary-btn">✉️ 寄給我登入連結</button>
+    </div>
 
     <div class="container">
         <!-- Left Section: Calendar -->
@@ -101,7 +108,7 @@
 
             <div class="staff-management">
                 <h3>人員管理</h3>
-                <div class="add-user-row">
+                <div class="add-user-row admin-only">
                     <input type="text" id="new-user-name" placeholder="姓名" style="flex: 1; min-width: 80px;">
                     <input type="email" id="new-user-email" placeholder="Email信箱" style="flex: 2; min-width: 120px;">
                     <input type="number" id="new-user-limit" placeholder="上限" value="4" min="1" style="width: 60px;">
@@ -134,6 +141,7 @@
                 <div class="modal-note">
                     <strong>💡 重要排班原則與提示：</strong>
                     <ul>
+                        <li><strong>登入方式</strong>：系統寄出的每封 Email 都附有您的<span class="text-danger">個人專屬連結</span>（請勿轉寄），點開後這台裝置就能換班、管理人員、假日與排班。沒有登入也可以查看班表和填寫畫休。換新裝置時再點一次信中的連結，或按「寄給我登入連結」即可。</li>
                         <li><strong>全自動排班系統</strong>：系統將於<span class="text-danger">每月 5 日直接進行一鍵排班</span>，為大家排定「下一個月」的班表。</li>
                         <li><strong>填寫死線</strong>：請於<span class="text-danger">每月 3 日前</span>填寫完畢下個月的畫休。若未填寫者視同皆可排班，排定後如需異動請自行協商。</li>
                         <li><strong>手動指派／換班</strong>：直接<span class="text-danger">點擊日曆上任一個 AM／PM 時段</span>，即可單獨指派或更換該格的人員，不需整月重排。</li>

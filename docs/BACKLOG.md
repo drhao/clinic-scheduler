@@ -9,7 +9,7 @@ Priorities: **P1** = real risk today · **P2** = will bite as usage grows ·
 **P3** = quality-of-life.
 
 IDs are stable and never reused; gaps mean the item shipped (B-01 → rate
-limit, D-13; B-02 → weekly backup, D-14).
+limit, D-13; B-02 → weekly backup, D-14; B-11 → personal login links, D-15).
 
 ---
 
@@ -63,11 +63,6 @@ year's stats under the new month. Consider following `currentDate`'s year.
 ### B-10 · Add-to-home-screen polish for phones
 No favicon / `manifest.json` / `apple-touch-icon`; doctors likely open this on
 phones monthly. Small static-file addition, no build needed.
-
-### B-11 · Real identity instead of a shared secret
-If auth is ever needed beyond D-07's shared password: deploy GAS as
-"Execute as: user accessing" + Google sign-in, or a per-doctor magic-link
-token column in Users. Both are significant UX changes — design doc first.
 
 ### B-12 · Per-doctor calendar feed
 Replace per-slot GCal links with a per-doctor ICS URL (GAS `doGet` with

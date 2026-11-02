@@ -20,6 +20,11 @@ let schedule = {};
 let holidays = []; // Array of date strings "YYYY-MM-DD"
 let isLoading = false;
 
+// Personal login token (D-15), delivered as …/#t=<token> in every system
+// email. Without it the page is read-only except for 畫休 entry.
+const TOKEN_STORAGE_KEY = 'clinicSchedulerToken';
+let authToken = loadToken();
+
 // Single source of truth for these lives in scheduler.js (loaded before this
 // file as the global `Scheduler`) — do not redefine them here.
 const UNASSIGNED = Scheduler.UNASSIGNED;
@@ -58,6 +63,7 @@ function init() {
         alert("Please configure the API_URL in script.js with your Google Apps Script deployment URL.");
     }
 
+    updateAuthUI();
     fetchData();
 
     // Event Listeners
@@ -69,6 +75,10 @@ function init() {
     const remindBtn = document.getElementById('remind-btn');
     if (remindBtn) remindBtn.addEventListener('click', sendReminders);
     if (clearYearBtn) clearYearBtn.addEventListener('click', clearScheduleForYear);
+    const requestLinkBtn = document.getElementById('request-link-btn');
+    if (requestLinkBtn) requestLinkBtn.addEventListener('click', requestLoginLink);
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) logoutBtn.addEventListener('click', logout);
 
     // Modal Event Listeners
     if (helpBtn && guideModal) {
@@ -155,12 +165,71 @@ async function sendReminders() {
     }
 }
 
+// Login (D-15)
+function loadToken() {
+    const match = location.hash.match(/[#&]t=([\w-]+)/);
+    if (match) {
+        try { localStorage.setItem(TOKEN_STORAGE_KEY, match[1]); } catch (e) { }
+        // Drop the token from the address bar so it isn't bookmarked or shared by accident
+        history.replaceState(null, '', location.pathname + location.search);
+        return match[1];
+    }
+    try {
+        return localStorage.getItem(TOKEN_STORAGE_KEY) || '';
+    } catch (e) {
+        return '';
+    }
+}
+
+function clearToken() {
+    authToken = '';
+    try { localStorage.removeItem(TOKEN_STORAGE_KEY); } catch (e) { }
+    updateAuthUI();
+}
+
+// Management controls carry the .admin-only class and are hidden by CSS
+// while body has .read-only. The backend enforces the same rule.
+function updateAuthUI() {
+    document.body.classList.toggle('read-only', !authToken);
+}
+
+async function requestLoginLink() {
+    const email = prompt("請輸入您登記在排班系統的 Email，系統會把個人登入連結寄給您：");
+    if (email === null || !email.trim()) return;
+
+    const ok = await postData('requestLink', { email: email.trim() });
+    if (ok) {
+        alert("如果這個 Email 在人員名單中，登入連結已經寄出，請到信箱收信。");
+    }
+}
+
+function logout() {
+    if (!confirm("確定要登出這台裝置嗎？之後需要再點一次 Email 中的個人連結才能管理。")) return;
+    clearToken();
+    fetchData();
+}
+
 // API Helpers
 async function fetchData() {
     setLoading(true);
     try {
-        const response = await fetch(API_URL);
-        const result = await response.json();
+        let result = null;
+        if (authToken) {
+            // Logged in: the POST variant also returns emails.
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'getData', token: authToken })
+            });
+            result = await response.json();
+            if (result.code === 'unauthorized') {
+                clearToken();
+                alert(result.message);
+            }
+        }
+        if (!result || result.status !== 'success' || !result.data) {
+            const response = await fetch(API_URL);
+            result = await response.json();
+        }
         if (result.status === 'success') {
             // Deployed-backend version marker; compare against BACKEND_VERSION
             // in google_apps_script.js to detect repo/deployment drift.
@@ -185,19 +254,19 @@ async function fetchData() {
     }
 }
 
-// NOTE: The admin-password gate is currently DISABLED — no action requires a
-// password and none is prompted for or sent. To re-enable it, restore
-// getAuthToken()/PUBLIC_ACTIONS here and the token check in google_apps_script.js
-// doPost (see git history), then run setApiToken() in the Apps Script editor.
-
 async function postData(action, payload) {
     setLoading(true);
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
-            body: JSON.stringify({ action, ...payload })
+            body: JSON.stringify({ action, token: authToken, ...payload })
         });
         const result = await response.json();
+        if (result.code === 'unauthorized') {
+            clearToken();
+            alert(result.message);
+            return false;
+        }
         if (result.status !== 'success') {
             alert("Error saving data: " + result.message);
             return false;
@@ -315,7 +384,7 @@ function renderCalendar() {
 
             // Holiday Checkbox
             const holidayCheckContainer = document.createElement('div');
-            holidayCheckContainer.className = 'holiday-check-container';
+            holidayCheckContainer.className = 'holiday-check-container admin-only';
             const holidayCheck = document.createElement('input');
             holidayCheck.type = 'checkbox';
             holidayCheck.checked = isHoliday;
@@ -401,14 +470,18 @@ async function toggleHoliday(dateStr, isChecked) {
 }
 
 // Builds one AM/PM schedule cell. The doctor name is set via textContent
-// (never innerHTML) so a name can never inject markup. Clicking the slot opens
-// the manual assign/swap modal.
+// (never innerHTML) so a name can never inject markup. When logged in, clicking
+// the slot opens the manual assign/swap modal.
 function buildScheduleSlot(slot, user, dateStr) {
     const div = document.createElement('div');
     div.className = 'schedule-slot';
     if (isUnassigned(user)) div.classList.add('unassigned');
-    div.title = '點擊指派 / 換班';
-    div.addEventListener('click', () => openAssignModal(dateStr, slot));
+    if (authToken) {
+        div.title = '點擊指派 / 換班';
+        div.addEventListener('click', () => openAssignModal(dateStr, slot));
+    } else {
+        div.classList.add('read-only-slot');
+    }
 
     const inner = document.createElement('div');
     const strong = document.createElement('strong');
@@ -579,15 +652,18 @@ function renderUserList() {
         nameSpan.id = `user-name-${index}`;
         nameSpan.textContent = `${user.name} (Max: ${user.limit})`;
 
-        const emailSpan = document.createElement('span');
-        emailSpan.style.cssText = 'font-size: 0.75rem; color: var(--text-light);';
-        emailSpan.textContent = user.email || '尚未設定 Email';
-
         info.appendChild(nameSpan);
-        info.appendChild(emailSpan);
+
+        // Emails are only sent to logged-in clients (D-15)
+        if (authToken) {
+            const emailSpan = document.createElement('span');
+            emailSpan.style.cssText = 'font-size: 0.75rem; color: var(--text-light);';
+            emailSpan.textContent = user.email || '尚未設定 Email';
+            info.appendChild(emailSpan);
+        }
 
         const actions = document.createElement('div');
-        actions.className = 'user-actions';
+        actions.className = 'user-actions admin-only';
 
         const editBtn = document.createElement('button');
         editBtn.className = 'edit-user-btn';

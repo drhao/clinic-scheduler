@@ -5,6 +5,12 @@ Welcome to the Clinic Scheduler! This guide will help you manage your weekly Wed
 ## 1. Getting Started
 To use the application, simply open the **`index.html`** file in your web browser (Chrome, Edge, Safari, etc.). No installation is required.
 
+### Logging In
+Every email from the system contains your **personal link**. Opening it lets that device swap shifts and manage staff, holidays and schedules.
+- Without logging in, you can still view the schedule and add your unavailable times.
+- On a new device, click the link again, or press "✉️ 寄給我登入連結" (email me my login link) and enter your registered email.
+- The link acts as your login, so **do not forward it**.
+
 ## 2. Managing Staff
 You can add new doctors or staff members on the right-hand panel under **"Manage Staff"**.
 

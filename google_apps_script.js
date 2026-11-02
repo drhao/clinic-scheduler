@@ -11,8 +11,14 @@
  * 4. Verify: curl "<API_URL>" and check the returned "version" matches.
  *
  * FIRST-TIME SETUP: run setup() once (creates the four tabs), then
- * createMonthlyTriggers() once (installs the two cron jobs). Full steps in
- * README.md / AGENTS.md.
+ * createMonthlyTriggers() once (installs the two cron jobs), then
+ * sendLoginLinksToAll() once (emails everyone their personal login link).
+ * Full steps in README.md / AGENTS.md.
+ *
+ * ACCESS (D-15): each user has a personal token (Users column D). Every email
+ * the system sends carries the recipient's link (APP_URL#t=<token>). Writes
+ * other than PUBLIC_ACTIONS require a valid token; emails are only returned
+ * to token holders.
  *
  * SYNC RULE: the BEGIN/END SHARED SCHEDULER block below must be byte-identical
  * to the one in scheduler.js (tests/parity.test.js enforces it). Never edit it
@@ -22,7 +28,14 @@
 // Bump on every deploy (any scheme works; date + counter is conventional).
 // doGet echoes this so drift between the repo and the deployed backend is
 // detectable: curl the API and compare with this constant.
-const BACKEND_VERSION = '2026-07-09.1';
+const BACKEND_VERSION = '2026-11-02.1';
+
+// Front-end URL used for the personal login links inside emails.
+const APP_URL = 'https://drhao.github.io/clinic-scheduler/';
+
+// Actions anyone may call without a login token (D-15). Keep in sync with the
+// read-only UI in script.js: 畫休 entry stays open; everything else needs a token.
+const PUBLIC_ACTIONS = ['addConstraint', 'removeConstraint', 'requestLink'];
 
 // ===== BEGIN SHARED SCHEDULER (sync-guarded) =====
 // This block MUST be byte-identical in scheduler.js and google_apps_script.js
@@ -150,8 +163,17 @@ function generateMonthSchedule(opts) {
 // ===== END SHARED SCHEDULER =====
 
 function doGet(e) {
+    // Public read: never includes emails or tokens (logged-in clients use the
+    // 'getData' POST action instead).
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    return jsonResponse({
+        status: 'success',
+        version: BACKEND_VERSION,
+        data: readAllData(ss, false)
+    });
+}
 
+function readAllData(ss, includeEmails) {
     // Read Users
     const usersSheet = ss.getSheetByName('Users');
     const usersData = usersSheet.getDataRange().getValues();
@@ -160,11 +182,12 @@ function doGet(e) {
         let startRow = (usersData[0][0] === "Name") ? 1 : 0;
         for (let i = startRow; i < usersData.length; i++) {
             if (usersData[i][0]) {
-                users.push({
+                const user = {
                     name: usersData[i][0],
-                    limit: usersData[i][1] || 4,
-                    email: usersData[i][2] || ''
-                });
+                    limit: usersData[i][1] || 4
+                };
+                if (includeEmails) user.email = usersData[i][2] || '';
+                users.push(user);
             }
         }
     }
@@ -212,14 +235,7 @@ function doGet(e) {
         }
     }
 
-    const result = {
-        status: 'success',
-        version: BACKEND_VERSION,
-        data: { users, constraints, schedule, holidays }
-    };
-
-    return ContentService.createTextOutput(JSON.stringify(result))
-        .setMimeType(ContentService.MimeType.JSON);
+    return { users, constraints, schedule, holidays };
 }
 
 function doPost(e) {
@@ -231,26 +247,29 @@ function doPost(e) {
     }
 
     const action = data.action;
-
-    // The shared-password gate is currently DISABLED — all write actions are
-    // open. To re-enable it, uncomment the block below (and restore
-    // getAuthToken()/PUBLIC_ACTIONS in script.js), then run setApiToken().
-    //
-    // const PUBLIC_ACTIONS = ['addConstraint', 'removeConstraint', 'saveSchedule'];
-    // const expectedToken = PropertiesService.getScriptProperties().getProperty('API_TOKEN');
-    // if (expectedToken && PUBLIC_ACTIONS.indexOf(action) === -1 && data.token !== expectedToken) {
-    //     return errorResponse("未授權：管理密碼錯誤");
-    // }
-
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
     const lock = LockService.getScriptLock();
-    lock.tryLock(10000);
+    if (!lock.tryLock(10000)) {
+        return errorResponse("系統忙碌中，請稍後再試");
+    }
 
     try {
-        if (action === 'addUser') {
+        // Login gate (D-15)
+        if (PUBLIC_ACTIONS.indexOf(action) === -1 && !findUserByToken(ss, data.token)) {
+            return errorResponse("尚未登入或登入連結已失效，請使用 Email 中的個人連結開啟網頁", 'unauthorized');
+        }
+
+        if (action === 'getData') {
+            return jsonResponse({
+                status: 'success',
+                version: BACKEND_VERSION,
+                data: readAllData(ss, true)
+            });
+
+        } else if (action === 'addUser') {
             const sheet = ss.getSheetByName('Users');
-            sheet.appendRow([data.name, data.limit, data.email || '']);
+            sheet.appendRow([data.name, data.limit, data.email || '', Utilities.getUuid()]);
 
         } else if (action === 'deleteUser') {
             const sheet = ss.getSheetByName('Users');
@@ -306,6 +325,12 @@ function doPost(e) {
             }
 
         } else if (action === 'addConstraint') {
+            // Public action: only accept well-formed rows for a doctor on the list.
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data.date)) ||
+                (data.slot !== 'AM' && data.slot !== 'PM') ||
+                !userExists(ss, data.user)) {
+                return errorResponse("不排班時間的資料格式不正確");
+            }
             const sheet = ss.getSheetByName('Constraints');
             const values = sheet.getDataRange().getValues();
             let exists = false;
@@ -369,16 +394,12 @@ function doPost(e) {
             }
             props.setProperty('LAST_REMINDER_TS', String(Date.now()));
 
-            const usersSheet = ss.getSheetByName('Users');
-            const usersData = usersSheet.getDataRange().getValues();
-            let startRow = (usersData.length > 0 && usersData[0][0] === "Name") ? 1 : 0;
-
             const targetYear = data.year || new Date().getFullYear();
             const targetMonth = data.month || (new Date().getMonth() + 1);
             const isScheduled = data.isScheduled;
 
             let subject = "";
-            let body = "";
+            let makeBody;
 
             if (isScheduled) {
                 // Read the current schedule to flag any slot that could not be filled.
@@ -392,7 +413,7 @@ function doPost(e) {
                 const unassignedNote = formatUnassignedNote(getUnassignedSlots(scheduleMap, targetYear, targetMonth - 1));
 
                 subject = `[通知] MO旅醫門診 ${targetYear}年${targetMonth}月 班表已排定`;
-                body = `大家好，\n\n${targetYear}年${targetMonth}月 的旅醫門診班表已經排定。\n請至排班網頁確認您的班表，並可以點擊班表上的「行事曆圖示」將門診時段加入您的個人 Google Calendar 中。${unassignedNote}\n\n排班網頁：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
+                makeBody = link => `大家好，\n\n${targetYear}年${targetMonth}月 的旅醫門診班表已經排定。\n請至排班網頁確認您的班表，並可以點擊班表上的「行事曆圖示」將門診時段加入您的個人 Google Calendar 中。${unassignedNote}\n\n排班網頁（您的個人連結，請勿轉寄）：${link}\n\n謝謝！\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
             } else {
                 let deadlineMonth = targetMonth - 1;
                 if (deadlineMonth === 0) {
@@ -400,27 +421,29 @@ function doPost(e) {
                 }
 
                 subject = `[提醒] 請填寫 MO旅醫門診 ${targetYear}年${targetMonth}月 不排班時間`;
-                body = `大家好，\n\n這是一封自動提醒信。\n請記得在 ${deadlineMonth} 月 3 日前至排班網頁填寫 ${targetMonth} 月份的不排班時間（畫休）。\n\n⚠️ 系統將於每月 5 日自動進行一鍵排班作業，若未填寫畫休，將視同隨時皆可排班，排定後請自行協調換班。\n\n排班網址：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
+                makeBody = link => `大家好，\n\n這是一封自動提醒信。\n請記得在 ${deadlineMonth} 月 3 日前至排班網頁填寫 ${targetMonth} 月份的不排班時間（畫休）。\n\n⚠️ 系統將於每月 5 日自動進行一鍵排班作業，若未填寫畫休，將視同隨時皆可排班，排定後請自行協調換班。\n\n排班網址（您的個人連結，請勿轉寄）：${link}\n\n謝謝！\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
             }
 
-            for (let i = startRow; i < usersData.length; i++) {
-                const email = usersData[i][2];
-                if (email && String(email).trim() !== "") {
-                    try {
-                        MailApp.sendEmail({
-                            to: String(email).trim(),
-                            subject: subject,
-                            body: body
-                        });
-                    } catch (e) {
-                        // Ignore invalid emails or limits
-                    }
+            sendToAllUsers(ss, subject, makeBody);
+
+        } else if (action === 'requestLink') {
+            // Public action. Always answers success so the response never
+            // reveals whether an address is on the list; at most one email per
+            // address every 10 minutes.
+            const email = String(data.email || '').trim().toLowerCase();
+            if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 100) {
+                const cache = CacheService.getScriptCache();
+                const cacheKey = 'login_link_' + email;
+                if (!cache.get(cacheKey)) {
+                    cache.put(cacheKey, '1', 600);
+                    getUsersWithTokens(ss)
+                        .filter(u => u.email.toLowerCase() === email)
+                        .forEach(u => sendLoginLink(u));
                 }
             }
         }
 
-        return ContentService.createTextOutput(JSON.stringify({ status: 'success' }))
-            .setMimeType(ContentService.MimeType.JSON);
+        return jsonResponse({ status: 'success' });
 
     } catch (err) {
         return errorResponse(err.toString());
@@ -429,9 +452,102 @@ function doPost(e) {
     }
 }
 
-function errorResponse(msg) {
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: msg }))
+function jsonResponse(obj) {
+    return ContentService.createTextOutput(JSON.stringify(obj))
         .setMimeType(ContentService.MimeType.JSON);
+}
+
+// code: 'unauthorized' tells the frontend to drop its stored login token.
+function errorResponse(msg, code) {
+    return jsonResponse({ status: 'error', message: msg, code: code || 'error' });
+}
+
+// ==========================================
+// PERSONAL LOGIN LINKS (D-15)
+// ==========================================
+
+function userExists(ss, name) {
+    const values = ss.getSheetByName('Users').getDataRange().getValues();
+    return values.some((row, i) => !(i === 0 && row[0] === "Name") && row[0] === name);
+}
+
+function findUserByToken(ss, token) {
+    if (typeof token !== 'string' || token.length < 20) return null;
+    const values = ss.getSheetByName('Users').getDataRange().getValues();
+    const row = values.find(r => r[0] && String(r[3] || '') === token);
+    return row ? { name: row[0], email: row[2] } : null;
+}
+
+/**
+ * Returns every user with an email address and login token, generating a
+ * token (Users column D) for anyone who doesn't have one yet.
+ */
+function getUsersWithTokens(ss) {
+    const sheet = ss.getSheetByName('Users');
+    const values = sheet.getDataRange().getValues();
+    const startRow = (values.length > 0 && values[0][0] === "Name") ? 1 : 0;
+    const result = [];
+    for (let i = startRow; i < values.length; i++) {
+        if (!values[i][0]) continue;
+        let token = values[i][3];
+        if (!token) {
+            token = Utilities.getUuid();
+            sheet.getRange(i + 1, 4).setValue(token);
+        }
+        result.push({
+            name: values[i][0],
+            email: String(values[i][2] || '').trim(),
+            token: String(token)
+        });
+    }
+    return result;
+}
+
+function loginLinkFor(user) {
+    return APP_URL + '#t=' + user.token;
+}
+
+/**
+ * Emails every user who has an address. makeBody(link) receives the
+ * recipient's personal login link and returns the body text.
+ */
+function sendToAllUsers(ss, subject, makeBody) {
+    getUsersWithTokens(ss).forEach(user => {
+        if (!user.email) return;
+        try {
+            MailApp.sendEmail({
+                to: user.email,
+                subject: subject,
+                body: makeBody(loginLinkFor(user))
+            });
+        } catch (e) {
+            Logger.log(`Failed to send email to ${user.email}`);
+        }
+    });
+}
+
+function sendLoginLink(user) {
+    if (!user.email) return;
+    MailApp.sendEmail({
+        to: user.email,
+        subject: '[登入連結] MO旅醫門診排班系統',
+        body: `${user.name} 您好，\n\n這是您在排班系統的個人登入連結。用這個連結開啟網頁後，這台裝置就可以管理人員、假日與班表（含換班）：\n\n${loginLinkFor(user)}\n\n此連結等同您的登入身分，請勿轉寄給他人。\n換新的電腦或手機時，再點一次這個連結即可。\n\n排班系統敬上\n=================================\n此信件為系統自動產生發送，請不要直接回信`
+    });
+}
+
+/**
+ * Emails every user their personal login link. Run ONCE from the editor after
+ * deploying the login-link version (and again whenever you want to re-send).
+ */
+function sendLoginLinksToAll() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    getUsersWithTokens(ss).forEach(user => {
+        try {
+            sendLoginLink(user);
+        } catch (e) {
+            Logger.log(`Failed to send login link to ${user.email}`);
+        }
+    });
 }
 
 // formatDate lives in the SHARED SCHEDULER block near the top of this file.
@@ -470,30 +586,18 @@ function formatUnassignedNote(unassigned) {
     return note;
 }
 
-/**
- * Sets the shared admin password that the frontend must send for write
- * actions. Edit the password below, run this ONCE from the editor, then
- * delete the password from this file (it lives in Script Properties after).
- * To disable the gate again, run clearApiToken().
- */
-function setApiToken() {
-    const PASSWORD = 'CHANGE_ME'; // <-- change to your chosen admin password
-    PropertiesService.getScriptProperties().setProperty('API_TOKEN', PASSWORD);
-    Logger.log('API_TOKEN has been set. Remember to remove the password from setApiToken().');
-}
-
-/** Removes the admin password, reopening write actions to anyone. */
-function clearApiToken() {
-    PropertiesService.getScriptProperties().deleteProperty('API_TOKEN');
-    Logger.log('API_TOKEN cleared. Write actions are now open.');
-}
-
 function setup() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    if (!ss.getSheetByName('Users')) ss.insertSheet('Users').appendRow(['Name', 'Limit', 'Email']);
+    if (!ss.getSheetByName('Users')) ss.insertSheet('Users').appendRow(['Name', 'Limit', 'Email', 'Token']);
     if (!ss.getSheetByName('Constraints')) ss.insertSheet('Constraints').appendRow(['User', 'Date', 'Slot']);
     if (!ss.getSheetByName('Schedule')) ss.insertSheet('Schedule').appendRow(['Key', 'Assigned User']);
     if (!ss.getSheetByName('Holidays')) ss.insertSheet('Holidays').appendRow(['Date']);
+
+    // Sheets created before D-15: add the Token header (tokens fill in lazily).
+    const usersSheet = ss.getSheetByName('Users');
+    if (usersSheet.getRange(1, 1).getValue() === 'Name' && !usersSheet.getRange(1, 4).getValue()) {
+        usersSheet.getRange(1, 4).setValue('Token');
+    }
 }
 
 // ==========================================
@@ -608,31 +712,10 @@ function autoSendReminderEmail() {
     
     const targetMonthDisplay = targetMonthIdx + 1; // 1-12 for display purposes
 
-    // 2. Load Users Data
-    const usersSheet = ss.getSheetByName('Users');
-    const usersData = usersSheet.getDataRange().getValues();
-    let startRowUsers = (usersData.length > 0 && usersData[0][0] === "Name") ? 1 : 0;
-
-    // 3. Construct Email Content
+    // 2. Construct and Send Emails (each with the recipient's login link)
     const subject = `[提醒] 請填寫 MO旅醫門診 ${targetYear}年${targetMonthDisplay}月 不排班時間（畫休）`;
-    const body = `大家好，\n\n這是一封自動提醒信。\n請記得在 ${currentMonthDisplay} 月 3 日前至排班網頁填寫 ${targetMonthDisplay} 月份的不排班時間（畫休）。\n\n⚠️ 系統將於每月 5 日自動進行一鍵排班作業，若未填寫畫休，將視同隨時皆可排班，排定後請自行協調換班。\n\n排班網址：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統自動派發\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
+    sendToAllUsers(ss, subject, link => `大家好，\n\n這是一封自動提醒信。\n請記得在 ${currentMonthDisplay} 月 3 日前至排班網頁填寫 ${targetMonthDisplay} 月份的不排班時間（畫休）。\n\n⚠️ 系統將於每月 5 日自動進行一鍵排班作業，若未填寫畫休，將視同隨時皆可排班，排定後請自行協調換班。\n\n排班網址（您的個人連結，請勿轉寄）：${link}\n\n謝謝！\n\n排班系統自動派發\n=================================\n此信件為系統自動產生發送，請不要直接回信`);
 
-    // 4. Send Emails
-    for (let i = startRowUsers; i < usersData.length; i++) {
-        const email = usersData[i][2];
-        if (email && String(email).trim() !== "") {
-            try {
-                MailApp.sendEmail({
-                    to: String(email).trim(),
-                    subject: subject,
-                    body: body
-                });
-            } catch (e) {
-                Logger.log(`Failed to send reminder email to ${email}`);
-            }
-        }
-    }
-    
     Logger.log(`Successfully sent email reminders for target month ${targetYear}-${targetMonthDisplay}.`);
 }
 
@@ -758,22 +841,7 @@ function autoGenerateSchedule() {
         // 5. Send Notifications
         const unassignedNote = formatUnassignedNote(getUnassignedSlots(scheduleMap, targetYear, targetMonthIdx));
         const subject = `[通知] MO旅醫門診 ${targetYear}年${targetMonthDisplay}月 班表已自動排定`;
-        const body = `大家好，\n\n系統已於今日自動完成 ${targetYear}年${targetMonthDisplay}月 的旅醫門診自動排班作業。\n請至排班網頁確認您的班表，並可以點擊班表上的「行事曆圖示」將門診時段加入您的個人 Google Calendar 中。\n(若需臨時異動，請自行協商換班)${unassignedNote}\n\n排班網頁：https://drhao.github.io/clinic-scheduler/\n\n謝謝！\n\n排班系統自動派發\n=================================\n此信件為系統自動產生發送，請不要直接回信`;
-
-        for (let i = startRowUsers; i < usersData.length; i++) {
-            const email = usersData[i][2];
-            if (email && String(email).trim() !== "") {
-                try {
-                    MailApp.sendEmail({
-                        to: String(email).trim(),
-                        subject: subject,
-                        body: body
-                    });
-                } catch (e) {
-                    Logger.log(`Failed to send email to ${email}`);
-                }
-            }
-        }
+        sendToAllUsers(ss, subject, link => `大家好，\n\n系統已於今日自動完成 ${targetYear}年${targetMonthDisplay}月 的旅醫門診自動排班作業。\n請至排班網頁確認您的班表，並可以點擊班表上的「行事曆圖示」將門診時段加入您的個人 Google Calendar 中。\n(若需臨時異動，請自行協商換班)${unassignedNote}\n\n排班網頁（您的個人連結，請勿轉寄）：${link}\n\n謝謝！\n\n排班系統自動派發\n=================================\n此信件為系統自動產生發送，請不要直接回信`);
 
     } catch (err) {
         Logger.log("Error in autoGenerateSchedule: " + err.toString());
