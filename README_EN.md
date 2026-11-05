@@ -8,7 +8,7 @@ A lightweight, single-page web application for managing weekly (Wednesday) clini
 
 ## Features
 
-- **Round Robin Scheduling**: Ensures fair distribution of duties using a queue-based system.
+- **Round Robin Scheduling**: Ensures fair distribution of duties using a queue-based system, and looks ahead to revise earlier picks when a slot would otherwise stay empty.
 - **Auto-Scheduling & Notifications**: Automatically generates schedules on the 5th of every month and sends out contextual email reminders/notifications to all staff.
 - **Duty Limits**: Set maximum monthly shifts per staff member.
 - **Global Holidays**: Mark specific Wednesdays as holidays to prevent assignments.
