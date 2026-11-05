@@ -28,7 +28,7 @@
 // Bump on every deploy (any scheme works; date + counter is conventional).
 // doGet echoes this so drift between the repo and the deployed backend is
 // detectable: curl the API and compare with this constant.
-const BACKEND_VERSION = '2026-11-02.2';
+const BACKEND_VERSION = '2026-11-05.1';
 
 // Front-end URL used for the personal login links inside emails.
 const APP_URL = 'https://drhao.github.io/clinic-scheduler/';
@@ -66,6 +66,11 @@ function formatDate(date) {
     }
 }
 
+// Upper bound on search steps when the plain greedy pass leaves empty slots.
+// A month has at most 10 slots, so this is generous; it only caps
+// pathological inputs and keeps the result deterministic.
+var MAX_SEARCH_STEPS = 50000;
+
 /**
  * Builds the schedule for one month's Wednesdays (AM + PM). Returns a NEW
  * schedule map; opts.existingSchedule is never mutated. Entries for other
@@ -80,6 +85,13 @@ function formatDate(date) {
  *   5. round-robin: an assigned doctor moves to the back of the queue.
  * Holidays clear that Wednesday's slots and assign no one. A slot with no
  * eligible doctor is set to UNASSIGNED.
+ *
+ * Look-ahead: picking the first eligible doctor can use someone up who is
+ * the only option for a later slot. The slots are therefore searched
+ * depth-first, trying candidates in queue order and "leave empty" last. The
+ * first complete path is exactly the greedy result above; the search only
+ * continues while slots are still empty, revising the latest picks first,
+ * and keeps the schedule with the fewest UNASSIGNED slots.
  *
  * @param {{year:number, month:number, users:Array, constraints:Array,
  *          holidays:Array, existingSchedule:Object}} opts  month is 0-indexed
@@ -114,49 +126,88 @@ function generateMonthSchedule(opts) {
         return a.name.localeCompare(b.name);
     });
 
-    var monthlyCounts = {};
-    users.forEach(function (u) { monthlyCounts[u.name] = 0; });
+    var blocked = {};
+    constraints.forEach(function (c) {
+        blocked[c.user + '|' + c.date + '|' + c.slot] = true;
+    });
 
-    function assign(dateStr, slot) {
-        var key = dateStr + '_' + slot;
-        var otherSlot = slot === 'AM' ? 'PM' : 'AM';
-        var foundIndex = -1;
-        for (var i = 0; i < queue.length; i++) {
-            var user = queue[i];
-            if (monthlyCounts[user.name] >= user.limit) continue;
-            var blocked = constraints.some(function (c) {
-                return c.user === user.name && c.date === dateStr && c.slot === slot;
-            });
-            if (blocked) continue;
-            if (schedule[dateStr + '_' + otherSlot] === user.name) continue; // same-day
-            foundIndex = i;
-            break;
-        }
-        if (foundIndex >= 0) {
-            var picked = queue[foundIndex];
-            schedule[key] = picked.name;
-            monthlyCounts[picked.name]++;
-            queue.push(queue.splice(foundIndex, 1)[0]); // round-robin
-        } else {
-            schedule[key] = UNASSIGNED;
-        }
-    }
-
+    // The month's slots in order: each Wednesday's AM, then its PM.
+    var slots = [];
     var daysInMonth = new Date(year, month + 1, 0).getDate();
     for (var d = 1; d <= daysInMonth; d++) {
         var dateObj = new Date(year, month, d);
         if (dateObj.getDay() !== 3) continue; // Wednesday only
         var dateStr = formatDate(dateObj);
 
-        // Clear this day first so the same-day check sees only this run.
+        // Clear this day first so stale entries never survive a re-run.
         delete schedule[dateStr + '_AM'];
         delete schedule[dateStr + '_PM'];
 
         if (holidays.indexOf(dateStr) !== -1) continue;
 
-        assign(dateStr, 'AM');
-        assign(dateStr, 'PM');
+        slots.push({ date: dateStr, slot: 'AM' });
+        slots.push({ date: dateStr, slot: 'PM' });
     }
+
+    var monthlyCounts = {};
+    var capacityLeft = 0;
+    users.forEach(function (u) {
+        monthlyCounts[u.name] = 0;
+        capacityLeft += Math.max(0, u.limit);
+    });
+
+    // hopelessFrom[i]: slots from i on that every doctor has 畫休 for.
+    var hopelessFrom = [];
+    hopelessFrom[slots.length] = 0;
+    for (var h = slots.length - 1; h >= 0; h--) {
+        var open = users.some(function (u) {
+            return !blocked[u.name + '|' + slots[h].date + '|' + slots[h].slot];
+        });
+        hopelessFrom[h] = hopelessFrom[h + 1] + (open ? 0 : 1);
+    }
+
+    var picks = [];
+    var best = null;
+    var bestEmpty = Infinity;
+    var steps = 0;
+
+    function search(i, order, empty) {
+        // Slots that must stay empty: not enough limit left, or nobody free.
+        var unfillable = Math.max(0, (slots.length - i) - capacityLeft, hopelessFrom[i]);
+        if (empty + unfillable >= bestEmpty) return;
+        if (i === slots.length) {
+            best = picks.slice();
+            bestEmpty = empty;
+            return;
+        }
+        if (steps >= MAX_SEARCH_STEPS) return;
+        steps++;
+
+        var s = slots[i];
+        for (var q = 0; q < order.length; q++) {
+            var user = order[q];
+            if (monthlyCounts[user.name] >= user.limit) continue;
+            if (blocked[user.name + '|' + s.date + '|' + s.slot]) continue;
+            if (s.slot === 'PM' && picks[i - 1] === user.name) continue; // same-day
+
+            picks[i] = user.name;
+            monthlyCounts[user.name]++;
+            capacityLeft--;
+            // round-robin: the picked doctor moves to the back of the queue
+            search(i + 1, order.slice(0, q).concat(order.slice(q + 1), [user]), empty);
+            monthlyCounts[user.name]--;
+            capacityLeft++;
+            if (bestEmpty === 0) return;
+        }
+        picks[i] = UNASSIGNED;
+        search(i + 1, order, empty + 1);
+    }
+
+    search(0, queue, 0);
+
+    slots.forEach(function (s, i) {
+        schedule[s.date + '_' + s.slot] = best[i];
+    });
 
     return schedule;
 }

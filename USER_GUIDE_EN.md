@@ -45,6 +45,7 @@ The system is configured to **automatically generate the schedule on the 5th of 
     -   It respects duty limits.
     -   It skips holidays.
     -   It avoids unavailable constraints.
+    -   If the plain order would leave a slot empty, it automatically revisits earlier picks to fill it; a slot shows "未安排" only when no complete schedule exists.
 
 ## 6. Viewing Statistics
 -   **Monthly Summary**: The table below the calendar shows how many shifts everyone has *this month*. (Red numbers mean they hit their limit).

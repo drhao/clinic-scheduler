@@ -118,3 +118,63 @@ test('leaves every slot unassigned when everyone is constrained', () => {
     assert.strictEqual(s[`${date}_AM`], UNASSIGNED);
     assert.strictEqual(s[`${date}_PM`], UNASSIGNED);
 });
+
+// Look-ahead: the greedy pick can use up the only doctor a later slot needs.
+// Only 2025-01-01 and 2025-01-08 remain; the other Wednesdays are holidays.
+const TWO_WEEKS_OFF = ['2025-01-15', '2025-01-22', '2025-01-29'];
+
+test('look-ahead: gives AM to the second doctor when only the first can do PM', () => {
+    const s = run({
+        users: users({ A: 4, B: 4 }),
+        constraints: [{ user: 'B', date: '2025-01-01', slot: 'PM' }],
+        holidays: ['2025-01-08'].concat(TWO_WEEKS_OFF),
+    });
+    // Greedy alone would give AM to A (first in queue) and leave PM empty.
+    assert.strictEqual(s['2025-01-01_AM'], 'B');
+    assert.strictEqual(s['2025-01-01_PM'], 'A');
+});
+
+test('look-ahead: does not spend a limited doctor on a slot someone else could take', () => {
+    // Availability: 01 AM {A,B} · 01 PM {C} · 08 AM {C} · 08 PM {A}; A limit 1.
+    const s = run({
+        users: users({ A: 1, B: 1, C: 2 }),
+        constraints: [
+            { user: 'A', date: '2025-01-01', slot: 'PM' },
+            { user: 'B', date: '2025-01-01', slot: 'PM' },
+            { user: 'A', date: '2025-01-08', slot: 'AM' },
+            { user: 'B', date: '2025-01-08', slot: 'AM' },
+            { user: 'B', date: '2025-01-08', slot: 'PM' },
+            { user: 'C', date: '2025-01-08', slot: 'PM' },
+        ],
+        holidays: TWO_WEEKS_OFF,
+    });
+    // Greedy alone: 01 AM A, 01 PM C, 08 AM C, 08 PM empty (A at limit).
+    assert.deepStrictEqual(
+        [s['2025-01-01_AM'], s['2025-01-01_PM'], s['2025-01-08_AM'], s['2025-01-08_PM']],
+        ['B', 'C', 'C', 'A']
+    );
+});
+
+test('look-ahead keeps the plain queue-order result when it already fills every slot', () => {
+    // A leads the queue (fewest prior duties), so A takes the first AM.
+    const s = run({ users: users({ A: 4, B: 4, C: 4 }) });
+    assert.deepStrictEqual(
+        WEDNESDAYS.map((date) => [s[`${date}_AM`], s[`${date}_PM`]]),
+        [['A', 'B'], ['C', 'A'], ['B', 'C'], ['A', 'B'], ['C', 'A']]
+    );
+});
+
+test('look-ahead still leaves a slot empty when no complete schedule exists', () => {
+    // Only A can work 01-01 and A cannot do both slots.
+    const s = run({
+        users: users({ A: 4, B: 4 }),
+        constraints: [
+            { user: 'B', date: '2025-01-01', slot: 'AM' },
+            { user: 'B', date: '2025-01-01', slot: 'PM' },
+        ],
+        holidays: ['2025-01-08'].concat(TWO_WEEKS_OFF),
+    });
+    const empties = ['2025-01-01_AM', '2025-01-01_PM'].filter((k) => s[k] === UNASSIGNED);
+    assert.strictEqual(empties.length, 1);
+    assert.strictEqual(s['2025-01-01_AM'], 'A'); // greedy order is kept
+});

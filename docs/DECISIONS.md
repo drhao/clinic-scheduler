@@ -40,6 +40,7 @@ assignment; same-day AM+PM exclusion; holidays clear both slots.
 within the calendar year; 清除整年班表 exists precisely to reset the fairness
 baseline at year end.
 **Revisit when**: fairness should span calendar years or weight AM/PM differently.
+Extended by D-17 (look-ahead when a slot would stay empty).
 
 ## D-05 · Same-day AM/PM exclusion is a real rule
 **Context**: README promised it; pre-2026-07 code didn't implement it.
@@ -156,3 +157,20 @@ schedule change — even a different month — forces the second editor to
 reload and redo their action. Users/constraints/holidays are row-level
 writes and are not revision-checked.
 **Revisit when**: conflicts become frequent enough to justify per-slot writes.
+
+## D-17 · Look-ahead search when the greedy pass leaves a slot empty
+**Context**: the 2026-12 auto-schedule left 12/30 PM `未安排` although 415
+complete schedules existed: the queue-order pick had already used up the
+only doctors free for that slot (limits + same-day rule).
+**Decision**: `generateMonthSchedule` searches the month's slots depth-first,
+trying candidates in the D-04 queue order with "leave empty" last, and keeps
+the schedule with the fewest `未安排`. The first path it reaches is exactly
+the old greedy result, so months the greedy already filled come out
+byte-identical; otherwise the latest picks are revised first. Pruned by
+remaining limit capacity and by slots nobody is free for; capped at
+`MAX_SEARCH_STEPS` (50,000) so the result stays deterministic and fast.
+**Consequences**: limits stay hard (D-03) — a slot is left empty only when no
+complete schedule exists (or the cap is hit). When the search does kick in,
+fairness order yields slightly to coverage.
+**Revisit when**: months grow beyond ~10 slots or many more doctors, and the
+cap starts being hit.
